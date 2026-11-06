@@ -1,0 +1,1235 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f3a5f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<title>Calculadora de Precios</title>
+<style>
+:root{
+  --bg:#f3f5f8; --panel:#ffffff; --ink:#16202c; --muted:#5d6b7c; --line:#d9e0e8;
+  --accent:#1f3a5f; --accent-ink:#ffffff; --ok:#1b7a43; --warn:#a15c00; --bad:#b3261e;
+  --okbg:#e3f4ea; --warnbg:#fff1d6; --badbg:#fde7e5; --field:#f8fafc;
+}
+@media (prefers-color-scheme:dark){
+  :root{ --bg:#0f151c; --panel:#18212b; --ink:#e8edf3; --muted:#9aa8b8; --line:#2b3947;
+    --accent:#6ea0e0; --accent-ink:#0b1420; --ok:#5cc98a; --warn:#f0b35a; --bad:#ff8a80;
+    --okbg:#12301f; --warnbg:#38290c; --badbg:#3b1815; --field:#101820; }
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-variant-numeric:tabular-nums;-webkit-tap-highlight-color:transparent}
+button,input,select{font:inherit;color:inherit}
+header{position:sticky;top:0;z-index:20;background:var(--accent);color:var(--accent-ink);
+  padding:8px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+header h1{font-size:17px;margin:0 8px 0 0;font-weight:650;letter-spacing:.2px}
+.chip{background:rgba(255,255,255,.16);color:inherit;border:1px solid rgba(255,255,255,.28);border-radius:999px;
+  padding:8px 14px;min-height:40px;cursor:pointer;max-width:46vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (prefers-color-scheme:dark){ .chip{background:rgba(0,0,0,.18);border-color:rgba(0,0,0,.35)} }
+.chip.age-ok{outline:2px solid #5cc98a} .chip.age-warn{outline:2px solid #f0b35a} .chip.age-bad{outline:2px solid #ff8a80}
+header .sp{flex:1}
+header select{background:transparent;color:inherit;border:1px solid rgba(255,255,255,.35);border-radius:8px;min-height:40px;padding:0 8px}
+header select option{color:#16202c}
+nav{display:flex;gap:4px;padding:8px 12px 0;background:var(--bg);position:sticky;top:57px;z-index:15;overflow-x:auto}
+nav button{border:0;background:transparent;padding:12px 18px;border-radius:10px 10px 0 0;color:var(--muted);cursor:pointer;
+  font-weight:600;min-height:46px;white-space:nowrap}
+nav button[aria-selected=true]{background:var(--panel);color:var(--ink);box-shadow:0 -2px 0 var(--accent) inset}
+main{padding:0 12px 80px}
+section{background:var(--panel);border:1px solid var(--line);border-radius:0 12px 12px 12px;padding:16px;display:none}
+section.on{display:block}
+.only-vend{display:none} body.vend .only-vend{display:block}
+input[readonly]{background:var(--bg);color:var(--ink);font-weight:650}
+h2{font-size:15px;margin:0 0 10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:650}
+.grid{display:grid;gap:14px}
+@media (min-width:860px){ .two{grid-template-columns:1fr 1fr} }
+.card{border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--panel)}
+label{display:block;font-size:13px;color:var(--muted);margin:0 0 4px}
+input[type=text],input[type=search],input[type=date],input[type=password],select.f{width:100%;min-height:46px;padding:8px 12px;border:1px solid var(--line);
+  border-radius:10px;background:var(--field)}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.row>*{flex:1 1 140px}
+.btn{min-height:46px;padding:10px 16px;border-radius:10px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);
+  font-weight:600;cursor:pointer}
+.btn.sec{background:transparent;color:var(--accent)}
+.btn.bad{background:transparent;color:var(--bad);border-color:var(--bad)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0}
+.kv dt{color:var(--muted)} .kv dd{margin:0;text-align:right;font-weight:600}
+.big{font-size:26px;font-weight:700}
+.tag{display:inline-block;padding:3px 10px;border-radius:999px;font-size:13px;font-weight:600}
+.tag.ok{background:var(--okbg);color:var(--ok)} .tag.warn{background:var(--warnbg);color:var(--warn)} .tag.bad{background:var(--badbg);color:var(--bad)}
+.msg{padding:10px 12px;border-radius:10px;margin:8px 0;font-size:14px}
+.msg.warn{background:var(--warnbg);color:var(--warn)} .msg.bad{background:var(--badbg);color:var(--bad)} .msg.ok{background:var(--okbg);color:var(--ok)}
+.list{max-height:46vh;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.list button{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);background:transparent;padding:10px 12px;cursor:pointer;min-height:48px}
+.list button:hover,.list button.sel{background:var(--field)}
+.list small{color:var(--muted);display:block}
+.muted{color:var(--muted)}
+.tbl{width:100%;border-collapse:collapse;font-size:14px}
+.tbl th{font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);text-align:right;padding:6px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl th:first-child,.tbl td:first-child,.tbl th.l,.tbl td.l{text-align:left}
+.tbl td{padding:6px;border-bottom:1px solid var(--line);text-align:right;vertical-align:middle}
+.tbl input{width:100%;min-width:74px;min-height:40px;padding:4px 8px;text-align:right;border:1px solid var(--line);border-radius:8px;background:var(--field)}
+.tbl input.drv{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.tbl .name{max-width:260px;white-space:normal}
+.tbl .name small{display:block;color:var(--muted)}
+.scroll{overflow-x:auto}
+.over{color:var(--bad);font-weight:700}
+.cost{transition:filter .15s}
+body.hide-costs .cost{filter:blur(8px);user-select:none}
+.overlay{position:fixed;inset:0;background:rgba(10,16,24,.62);z-index:50;display:none;align-items:flex-start;justify-content:center;padding:6vh 12px}
+.overlay.on{display:flex}
+.modal{background:var(--panel);border-radius:14px;padding:18px;width:min(640px,100%);max-height:88vh;overflow:auto;border:1px solid var(--line)}
+.lock{background:var(--bg);z-index:60;align-items:center}
+.cardprev{border:2px solid var(--ink);border-radius:6px;max-width:560px}
+.cardprev .h{background:var(--ink);color:var(--bg);padding:10px 14px;font-weight:700;letter-spacing:.5px}
+.cardprev table{width:100%;border-collapse:collapse}
+.cardprev td{padding:7px 14px;border-top:1px solid var(--line);vertical-align:top}
+.cardprev td:first-child{color:var(--muted);width:42%}
+.cardprev td:last-child{font-weight:650}
+body.vend .only-mgr{display:none !important}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:999px;z-index:80;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.on{opacity:.96}
+</style>
+</head>
+<body>
+<header>
+  <h1>Calculadora de Precios</h1>
+  <button class="chip" id="chipCliente" type="button">Elegir cliente</button>
+  <select id="selCateg" title="Categoria de precio (solo si no hay cliente elegido)" aria-label="Categoria de precio">
+    <option>AAA</option><option>A</option><option>B</option><option>C</option>
+  </select>
+  <span class="sp"></span>
+  <button class="chip only-mgr" id="chipOcultar" type="button" title="Difumina costos y utilidades">Ocultar costos</button>
+  <button class="chip" id="chipDatos" type="button">Sin datos</button>
+  <button class="chip" id="chipBloquear" type="button">Bloquear</button>
+</header>
+<nav role="tablist">
+  <button role="tab" data-tab="precio" aria-selected="true">Precio unitario</button>
+  <button role="tab" data-tab="lista" aria-selected="false">Lista (max 15)</button>
+  <button role="tab" data-tab="aut" aria-selected="false" class="only-mgr">Autorizacion</button>
+  <button role="tab" data-tab="proy" aria-selected="false" class="only-mgr">Proyecto</button>
+  <button role="tab" data-tab="clientes" aria-selected="false">Clientes</button>
+  <button role="tab" data-tab="datos" aria-selected="false">Datos</button>
+</nav>
+<main>
+
+<!-- ============ PRECIO UNITARIO ============ -->
+<section id="s-precio" class="on">
+  <div class="grid two">
+    <div class="card">
+      <h2>Articulo</h2>
+      <label for="pSku">Codigo o descripcion</label>
+      <input type="search" id="pSku" placeholder="Escribe codigo o palabras de la descripcion" autocomplete="off">
+      <div class="list" id="pRes" style="margin-top:8px;display:none"></div>
+      <div id="pInfo" style="margin-top:12px"></div>
+    </div>
+    <div class="card">
+      <h2>Calculo</h2>
+      <p class="muted" id="pHint" style="margin:0 0 10px">Edita cualquiera de los tres campos; los otros dos se recalculan.</p>
+      <div class="row">
+        <div><label for="pDesc">Descuento %</label><input type="text" id="pDesc" inputmode="decimal"></div>
+        <div class="only-mgr"><label for="pUtil">Utilidad %</label><input type="text" id="pUtil" inputmode="decimal" class="cost"></div>
+        <div><label for="pPrecio">Precio venta</label><input type="text" id="pPrecio" inputmode="decimal"></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div><label for="pCant">Cantidad</label><input type="text" id="pCant" inputmode="decimal" value="1"></div>
+        <div><label>Total (cantidad x precio)</label><div class="big" id="pTotal">-</div></div>
+        <div class="only-vend"><label>Total + I.V.A. (13%)</label><div class="big" id="pTotalIva">-</div></div>
+      </div>
+      <div id="pAvisos"></div>
+      <div id="pValidez" class="only-vend muted" style="margin-top:8px"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn sec" id="pAgregar" type="button">Agregar a la lista</button>
+        <button class="btn only-mgr" id="pAutorizar" type="button">Preparar autorizacion</button>
+        <button class="btn only-vend" id="pExportar" type="button">Exportar imagen</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ LISTA ============ -->
+<section id="s-lista">
+  <div class="row" style="margin-bottom:10px;align-items:center">
+    <div><strong id="lCliente"></strong></div>
+    <button class="btn" id="lAgregar" type="button" style="flex:0 0 auto">Agregar articulo</button>
+    <button class="btn bad" id="lLimpiar" type="button" style="flex:0 0 auto">Limpiar lista</button>
+    <button class="btn only-vend" id="lExportar" type="button" style="flex:0 0 auto">Exportar imagen</button>
+  </div>
+  <div class="scroll"><table class="tbl" id="lTabla"></table></div>
+  <div id="lTotales" class="card" style="margin-top:12px"></div>
+</section>
+
+<!-- ============ AUTORIZACION ============ -->
+<section id="s-aut">
+  <div class="grid two">
+    <div class="card">
+      <h2>Datos de la autorizacion</h2>
+      <div class="row">
+        <div><label for="aCant">Unidades - Cantidad</label><input type="text" id="aCant" inputmode="decimal"></div>
+        <div><label for="aPrecio">Precio especial minimo</label><input type="text" id="aPrecio" inputmode="decimal"></div>
+      </div>
+      <div style="margin-top:10px">
+        <label>Articulo</label>
+        <div class="row"><input type="text" id="aSkuTxt" readonly style="flex:1 1 220px"><button class="btn sec" id="aSkuBtn" type="button" style="flex:0 0 auto">Elegir</button></div>
+      </div>
+      <div style="margin-top:10px">
+        <label for="aGerente">Gerente que autoriza</label>
+        <select class="f" id="aGerente"></select>
+        <div class="row" id="aGerenteNuevo" style="display:none;margin-top:8px">
+          <input type="text" id="aGerenteTxt" placeholder="Nombre y apellido" maxlength="60" autocomplete="off" style="flex:2 1 200px">
+          <button class="btn" id="aGerenteOk" type="button" style="flex:0 0 auto">Guardar</button>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div><label for="aFecha">Fecha</label><input type="date" id="aFecha"></div>
+        <div><label for="aValidez">Validez hasta</label><input type="date" id="aValidez"></div>
+      </div>
+      <div style="margin-top:10px"><label><input type="checkbox" id="aIva"> Incluir IVA 13% en el total</label></div>
+      <div class="row" style="margin-top:10px">
+        <div><label for="aConsec">Consecutivo</label><input type="text" id="aConsec" readonly></div>
+        <button class="btn sec" id="aNuevoConsec" type="button" style="flex:0 0 auto">Nuevo consecutivo</button>
+      </div>
+      <p class="muted" style="margin-bottom:0">Concesionario, zona y cliente salen del cliente elegido arriba.</p>
+    </div>
+    <div>
+      <div id="aFalta"></div>
+      <div class="cardprev" id="aPrev"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="aCompartir" type="button">Compartir imagen</button>
+        <button class="btn sec" id="aCopiar" type="button">Copiar texto</button>
+      </div>
+      <div class="card" style="margin-top:12px"><h2>Solo uso interno (no aparece en la tarjeta)</h2>
+        <dl class="kv" id="aInterno"></dl></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PROYECTO ============ -->
+<section id="s-proy">
+  <div class="grid two">
+    <div class="card">
+      <h2>Datos del proyecto</h2>
+      <div class="row">
+        <div><label for="yOv">Orden de Venta (OV)</label><input type="text" id="yOv" placeholder="OV-00000" maxlength="30" autocomplete="off"></div>
+        <div><label for="yValidez">Validez hasta</label><input type="date" id="yValidez"></div>
+      </div>
+      <div style="margin-top:10px">
+        <label for="yGerente">Gerente que autoriza</label>
+        <select class="f" id="yGerente"></select>
+        <div class="row" id="yGerenteNuevo" style="display:none;margin-top:8px">
+          <input type="text" id="yGerenteTxt" placeholder="Nombre y apellido" maxlength="60" autocomplete="off" style="flex:2 1 200px">
+          <button class="btn" id="yGerenteOk" type="button" style="flex:0 0 auto">Guardar</button>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div style="flex:0 1 220px"><label for="yUtil">Utilidad por defecto %</label><input type="text" id="yUtil" inputmode="decimal" class="cost"></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div style="flex:2 1 230px"><label for="yConsec">Consecutivo</label><input type="text" id="yConsec" readonly></div>
+        <button class="btn sec" id="yNuevoConsec" type="button" style="flex:0 0 auto">Nuevo consecutivo</button>
+      </div>
+      <div id="yCliente" style="margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <h2>Total del negocio</h2>
+      <div id="yTotales"></div>
+      <div id="yAvisos"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn sec" id="yVista" type="button">Vista previa</button>
+        <button class="btn" id="yCompartir" type="button">Compartir imagen</button>
+      </div>
+      <div class="row" style="margin-top:10px"><button class="btn bad" id="yNuevo" type="button">Nuevo proyecto</button></div>
+    </div>
+  </div>
+  <div class="row" style="margin:12px 0;align-items:center">
+    <div><strong>Lineas del proyecto</strong> <span class="muted" id="yConteo"></span></div>
+    <button class="btn" id="yAgregar" type="button" style="flex:0 0 auto">Agregar articulo</button>
+  </div>
+  <div class="scroll"><table class="tbl" id="yTabla"></table></div>
+</section>
+
+<!-- ============ CLIENTES ============ -->
+<section id="s-clientes">
+  <div class="row">
+    <div style="flex:2 1 260px"><label for="cBuscar">Buscar (nombre, codigo, vendedor o zona)</label><input type="search" id="cBuscar" autocomplete="off"></div>
+    <div><label for="cGrupo">Grupo</label><select class="f" id="cGrupo"><option value="">Todos</option></select></div>
+    <div><label for="cVend">Vendedor</label><select class="f" id="cVend"><option value="">Todos</option></select></div>
+  </div>
+  <p class="muted" id="cConteo"></p>
+  <div class="list" id="cLista" style="max-height:62vh"></div>
+</section>
+
+<!-- ============ DATOS ============ -->
+<section id="s-datos">
+  <div class="grid two">
+    <div class="card">
+      <h2>Estado de los datos</h2>
+      <dl class="kv" id="dEstado"></dl>
+      <div id="dAviso"></div>
+    </div>
+    <div class="card">
+      <h2>Acciones</h2>
+      <div class="grid">
+        <div><button class="btn" id="dImportar" type="button">Importar paquete (.json o .enc)</button>
+          <p class="muted" style="margin:6px 0 0">Generado desde el libro con la macro ExportarPaqueteTablet. La app lo protege con tu clave antes de guardarlo.</p></div>
+        <div><button class="btn sec" id="dExportar" type="button">Exportar paquete cifrado (.enc)</button>
+          <p class="muted" style="margin:6px 0 0">Para pasarlo a otra tableta. Se abre con la misma clave.</p></div>
+        <div><button class="btn bad" id="dBorrar" type="button">Borrar los datos de esta tableta</button></div>
+        <div class="only-mgr"><label>Gerentes que autorizan</label>
+          <div id="dGerentes"></div>
+          <div class="row" style="margin-top:8px">
+            <input type="text" id="dGerenteTxt" placeholder="Nombre y apellido" maxlength="60" autocomplete="off" style="flex:2 1 200px">
+            <button class="btn sec" id="dGerenteAdd" type="button" style="flex:0 0 auto">Agregar</button>
+          </div>
+          <p class="muted" style="margin:6px 0 0">Cada tableta guarda su propia lista. En la pestana Autorizacion se elige quien autoriza cada precio.</p></div>
+      </div>
+      <input type="file" id="dFile" accept=".json,.enc,.txt,application/json" hidden>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- ======= overlays ======= -->
+<div class="overlay" id="ovPick"><div class="modal">
+  <div class="row" style="align-items:center"><input type="search" id="pkQ" placeholder="Codigo o descripcion" autocomplete="off" style="flex:3 1 240px">
+    <button class="btn sec" id="pkCerrar" type="button" style="flex:0 0 auto">Cerrar</button></div>
+  <div class="list" id="pkRes" style="margin-top:10px"></div>
+</div></div>
+
+<div class="overlay" id="ovPass"><div class="modal" style="max-width:460px">
+  <h2 id="psTitulo">Clave</h2>
+  <p class="muted" id="psTexto"></p>
+  <label for="psA">Clave</label><input type="password" id="psA" autocomplete="off">
+  <div id="psBox" style="display:none;margin-top:10px"><label for="psB">Repite la clave</label><input type="password" id="psB" autocomplete="off"></div>
+  <div id="psErr" class="msg bad" style="display:none"></div>
+  <div class="row" style="margin-top:12px"><button class="btn" id="psOk" type="button">Aceptar</button>
+    <button class="btn sec" id="psCancel" type="button">Cancelar</button></div>
+</div></div>
+
+<div class="overlay lock" id="ovLock"><div class="modal" style="max-width:440px">
+  <h2>Datos protegidos</h2>
+  <p class="muted" id="lkTexto">Escribe la clave para abrir los datos guardados en esta tableta.</p>
+  <label for="lkClave">Clave</label><input type="password" id="lkClave" autocomplete="off">
+  <div id="lkErr" class="msg bad" style="display:none"></div>
+  <div class="row" style="margin-top:12px"><button class="btn" id="lkOk" type="button">Abrir</button>
+    <button class="btn sec" id="lkImp" type="button">Importar otro paquete</button></div>
+</div></div>
+
+<div class="overlay" id="ovPrev"><div class="modal" style="width:min(1000px,100%)">
+  <div class="row" style="align-items:center"><strong>Vista previa de la autorizacion de proyecto</strong>
+    <button class="btn sec" id="pvCerrar" type="button" style="flex:0 0 auto">Cerrar</button></div>
+  <div id="pvImgs" style="margin-top:10px"></div>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ====================== utilidades ====================== */
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const norm = s => String(s == null ? "" : s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pad = (n, l = 2) => String(n).padStart(l, "0");
+function parseNum(s) {
+  s = String(s == null ? "" : s).trim().replace(/\s/g, "").replace("%", "");
+  if (!s) return NaN;
+  const c = s.lastIndexOf(","), d = s.lastIndexOf(".");
+  if (c > -1 && d > -1) s = c > d ? s.replace(/\./g, "").replace(",", ".") : s.replace(/,/g, "");
+  else if (c > -1) s = s.replace(",", ".");
+  return parseFloat(s);
+}
+// Redondeo como Excel: opera sobre 15 cifras significativas, asi 7401.165 da 7401.17 (JS puro da 7401.16 por el binario).
+const rd = (x, d = 2) => { const f = Math.pow(10, d); return Math.round(parseFloat((x * f).toPrecision(15))) / f; };
+const money = n => n == null || !isFinite(n) ? "-" : "₡" + rd(n).toLocaleString("es-CR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const pct = x => x == null || !isFinite(x) ? "-" : rd(x * 100).toFixed(2) + "%";
+const num2 = x => x == null || !isFinite(x) ? "" : rd(x).toFixed(2);
+const pctIn = x => x == null || !isFinite(x) ? "" : rd(x * 100).toFixed(2);
+const fechaCR = d => pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + "/" + d.getFullYear();
+const isoDate = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+const finMes = d => new Date(d.getFullYear(), d.getMonth() + 1, 0);
+function toast(t) { const e = $("#toast"); e.textContent = t; e.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove("on"), 2400); }
+const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+
+/* ====================== cifrado y almacenamiento ====================== */
+const ITER = 250000;
+const b64e = buf => { const u = new Uint8Array(buf); let s = ""; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
+const b64d = str => { const s = atob(str), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; };
+async function deriveKey(pass, salt, it) {
+  const km = await crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: it, hash: "SHA-256" }, km, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+async function gz(bytes) { return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer()); }
+async function gunz(bytes) { return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer()); }
+async function encryptObj(obj, pass) {
+  let bytes = new TextEncoder().encode(JSON.stringify(obj));
+  const comp = typeof CompressionStream !== "undefined" ? 1 : 0;
+  if (comp) bytes = await gz(bytes);
+  const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKey(pass, salt, ITER);
+  const data = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, bytes);
+  return { v: 1, comp, it: ITER, salt: b64e(salt), iv: b64e(iv), data: b64e(data) };
+}
+async function decryptBlob(blob, pass) {
+  const key = await deriveKey(pass, b64d(blob.salt), blob.it || ITER);
+  let bytes = new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64d(blob.iv) }, key, b64d(blob.data)));
+  if (blob.comp) bytes = await gunz(bytes);
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+function idb() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open("precios", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("kv");
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+}
+async function idbGet(k) { const db = await idb(); return new Promise((res, rej) => { const q = db.transaction("kv").objectStore("kv").get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
+async function idbSet(k, v) { const db = await idb(); return new Promise((res, rej) => { const t = db.transaction("kv", "readwrite"); t.objectStore("kv").put(v, k); t.oncomplete = res; t.onerror = () => rej(t.error); }); }
+async function idbDel(k) { const db = await idb(); return new Promise((res, rej) => { const t = db.transaction("kv", "readwrite"); t.objectStore("kv").delete(k); t.oncomplete = res; t.onerror = () => rej(t.error); }); }
+
+/* ====================== estado ====================== */
+// item = [codigo, nombre, costo, descMax, stock, categoria, subcategoria, activo, AAA, A, B, C]
+// cliente = [vendedor, zona, codigo, nombre, categ, grupo]
+let DATA = null, BLOB = null, IDX = new Map(), SRCH = [];
+let CFG = Object.assign({ gerentes: [], categoria: "AAA", cliente: "", ocultar: false }, lsGet("cfg", {}));
+// Migracion desde v1.2: el nombre unico guardado pasa a ser el primer gerente de la lista.
+if (!Array.isArray(CFG.gerentes)) CFG.gerentes = [];
+if (CFG.autoriza && !CFG.gerentes.length) CFG.gerentes.push(String(CFG.autoriza).replace(/\s+/g, " ").trim().slice(0, 60));
+if ("autoriza" in CFG) { delete CFG.autoriza; lsSet("cfg", CFG); }
+let CALC = { sku: null, modo: "desc", valor: 0 };
+let LINES = lsGet("lista", []);
+let AUT = Object.assign({ sku: "", cant: 1, precio: 0, consec: "", iva: false, fecha: "", validez: "", autoriza: "" }, lsGet("aut", {}));
+const saveCfg = () => lsSet("cfg", CFG), saveLines = () => lsSet("lista", LINES), saveAut = () => lsSet("aut", AUT);
+// Proyecto: lineas {sku, cant, util|null}; util null = usa la utilidad por defecto del proyecto.
+let PROY = Object.assign({ ov: "", validez: "", consec: "", autoriza: "", util: 0.15, lines: [], shared: null }, lsGet("proy", {}));
+if (!Array.isArray(PROY.lines)) PROY.lines = [];
+if (typeof PROY.util !== "number" || !isFinite(PROY.util)) PROY.util = 0.15;
+const saveProy = () => lsSet("proy", PROY);
+const MAX_PROY = 500, POR_PAGINA = 40;
+
+// Perfil vendedor: el paquete NO trae costo ni stock (la macro los deja fuera), asi que aqui solo se ocultan
+// las pantallas que dependerian de ellos. Los datos sensibles nunca llegan a la tableta del vendedor.
+const esVend = () => !!(DATA && DATA.perfil === "vendedor");
+function setData(d) {
+  DATA = d; IDX = new Map(); SRCH = [];
+  document.body.classList.toggle("vend", esVend());
+  $("header h1").textContent = esVend() ? "Precios (vendedores)" : "Calculadora de Precios";
+  document.title = $("header h1").textContent;
+  $("#pPrecio").readOnly = esVend();
+  $("#pHint").textContent = esVend() ? "Edita el descuento (hasta el máximo según la lista); el precio se calcula." : "Edita cualquiera de los tres campos; los otros dos se recalculan.";
+  if (esVend() && ($("#s-aut").classList.contains("on") || $("#s-proy").classList.contains("on"))) showTab("precio");
+  d.items.forEach((it, i) => { IDX.set(it[0].toLowerCase(), it); SRCH.push(norm(it[0] + " " + it[1])); });
+  const gs = [...new Set(d.clientes.map(c => c[5]).filter(Boolean))].sort();
+  const vs = [...new Set(d.clientes.map(c => c[0]).filter(Boolean))].sort();
+  $("#cGrupo").innerHTML = '<option value="">Todos</option>' + gs.map(g => `<option>${esc(g)}</option>`).join("");
+  $("#cVend").innerHTML = '<option value="">Todos</option>' + vs.map(g => `<option>${esc(g)}</option>`).join("");
+  renderAll();
+}
+const getItem = sku => IDX.get(String(sku || "").toLowerCase()) || null;
+function clienteActual() { return DATA && CFG.cliente ? DATA.clientes.find(c => c[2] === CFG.cliente) || null : null; }
+function categoriaActiva() {
+  const c = clienteActual();
+  if (c) return String(c[4] || "").trim().toUpperCase();
+  return CFG.categoria;
+}
+function precioLista(it, cat) {
+  const i = { AAA: 8, A: 9, B: 10, C: 11 }[cat];
+  return i ? it[i] : null;
+}
+function calcular(it, cat, modo, valor) {
+  const pl = precioLista(it, cat), costo = it[2];
+  let precio = null, desc = null, util = null;
+  if (modo === "desc") { desc = valor; if (pl != null && isFinite(valor)) precio = pl * (1 - valor); }
+  else if (modo === "util") { util = valor; if (costo != null && isFinite(valor) && valor < 1) precio = costo / (1 - valor); }
+  else if (isFinite(valor)) precio = valor;
+  if (precio != null && precio > 0) {
+    if (modo !== "util" && costo != null) util = (precio - costo) / precio;
+    if (modo !== "desc" && pl) desc = (pl - precio) / pl;
+  }
+  if (precio != null && !(precio > 0)) precio = modo === "precio" ? precio : null;
+  return { pl, costo, precio, desc, util };
+}
+const DIAS_VALIDEZ = 8, IVA = 1.13;
+const fmtF = d => pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + "/" + d.getFullYear();
+const validezHasta = d => new Date(d.getFullYear(), d.getMonth(), d.getDate() + DIAS_VALIDEZ);
+const textoValidez = () => { const h = new Date(); return "Fecha del cálculo: " + fmtF(h) + " | Oferta válida hasta: " + fmtF(validezHasta(h)) + " (" + DIAS_VALIDEZ + " días naturales)"; };
+const lineaVend = (precio, cant) => { const base = rd(precio * cant), final = rd(base * IVA); return { base, final }; };
+const MSG_EXCESO_VEND = "Descuento supera el máximo. Este precio requiere Autorización.";
+function avisos(it, cat, r) {
+  const a = [], v = esVend();
+  if (!it[7]) a.push(["warn", "Articulo inactivo en Zoho"]);
+  if (r.pl == null) a.push(["bad", "Sin precio de lista para la categoria '" + (cat || "?") + "'"]);
+  if (r.desc != null && r.desc > it[3] + 1e-6) a.push(["bad", v ? MSG_EXCESO_VEND : "Excede el descuento maximo (" + pct(it[3]) + ")"]);
+  if (!v) {
+    if (r.util != null && r.util < 0) a.push(["bad", "Utilidad negativa"]);
+    if (it[2] == null) a.push(["warn", "Sin costo calculado: no se puede calcular utilidad"]);
+  }
+  return a;
+}
+const avisosHtml = a => a.map(x => `<div class="msg ${x[0]}">${esc(x[1])}</div>`).join("");
+
+/* ====================== selector de articulos ====================== */
+function buscar(q, max = 40) {
+  q = norm(q).trim(); if (!q || !DATA) return [];
+  const ws = q.split(/\s+/), exact = [], starts = [], rest = [];
+  for (let i = 0; i < SRCH.length; i++) {
+    const s = SRCH[i]; let ok = true;
+    for (const w of ws) if (s.indexOf(w) < 0) { ok = false; break; }
+    if (!ok) continue;
+    const code = norm(DATA.items[i][0]);
+    (code === q ? exact : code.startsWith(q) ? starts : rest).push(DATA.items[i]);
+    if (exact.length + starts.length + rest.length > 400) break;
+  }
+  return exact.concat(starts, rest).slice(0, max);
+}
+function resultadosHtml(items) {
+  return items.map(it => `<button type="button" data-sku="${esc(it[0])}"><strong>${esc(it[0])}</strong> ${it[7] ? "" : '<span class="tag warn">inactivo</span>'}
+    <small>${esc(it[1])}${esVend() ? "" : " | stock " + it[4]}</small></button>`).join("") || '<div class="muted" style="padding:12px">Sin resultados</div>';
+}
+let pickCb = null;
+function pickSku(cb) { pickCb = cb; $("#ovPick").classList.add("on"); $("#pkQ").value = ""; $("#pkRes").innerHTML = ""; setTimeout(() => $("#pkQ").focus(), 50); }
+$("#pkQ").addEventListener("input", e => { $("#pkRes").innerHTML = resultadosHtml(buscar(e.target.value)); });
+$("#pkRes").addEventListener("click", e => {
+  const b = e.target.closest("button[data-sku]"); if (!b) return;
+  $("#ovPick").classList.remove("on"); const cb = pickCb; pickCb = null; if (cb) cb(getItem(b.dataset.sku));
+});
+$("#pkCerrar").onclick = () => { $("#ovPick").classList.remove("on"); pickCb = null; };
+
+/* ====================== PRECIO UNITARIO ====================== */
+function renderPrecio() {
+  const it = CALC.sku ? getItem(CALC.sku) : null, cat = categoriaActiva();
+  const info = $("#pInfo");
+  $("#pValidez").textContent = textoValidez();
+  if (!it) { info.innerHTML = '<p class="muted">Busca un articulo para ver su informacion.</p>'; $("#pAvisos").innerHTML = ""; return; }
+  const pl = precioLista(it, cat);
+  info.innerHTML = `<div><strong>${esc(it[0])}</strong> <span class="tag ${it[7] ? "ok" : "warn"}">${it[7] ? "activo" : "inactivo"}</span></div>
+    <div style="margin:2px 0 10px">${esc(it[1])}</div>
+    <dl class="kv">
+      <dt>Categoria</dt><dd>${esc(it[5])}</dd><dt>Subcategoria</dt><dd>${esc(it[6])}</dd>
+      ${esVend() ? "" : `<dt>Stock</dt><dd>${it[4]}</dd><dt>Costo</dt><dd class="cost">${money(it[2])}</dd>`}
+      <dt>Precio lista (${esc(cat || "?")})</dt><dd>${money(pl)}</dd>
+      <dt>Descuento maximo</dt><dd>${pct(it[3])}</dd>
+      <dt>Precio con descuento maximo</dt><dd>${pl == null ? "-" : money(pl * (1 - it[3]))}</dd>
+    </dl>`;
+  recalcPrecio();
+}
+function recalcPrecio(skipField) {
+  const it = CALC.sku ? getItem(CALC.sku) : null; if (!it) return;
+  const cat = categoriaActiva(), r = calcular(it, cat, CALC.modo, CALC.valor);
+  if (skipField !== "desc") $("#pDesc").value = pctIn(r.desc);
+  if (skipField !== "util") $("#pUtil").value = pctIn(r.util);
+  if (skipField !== "precio") $("#pPrecio").value = num2(r.precio);
+  const cant = parseNum($("#pCant").value);
+  $("#pTotal").textContent = r.precio > 0 && cant > 0 ? money(r.precio * cant) : "-";
+  $("#pTotalIva").textContent = r.precio > 0 && cant > 0 ? money(lineaVend(r.precio, cant).final) : "-";
+  $("#pAvisos").innerHTML = avisosHtml(avisos(it, cat, r));
+}
+function elegirPrecioSku(it) {
+  if (!it) return;
+  CALC = { sku: it[0], modo: "desc", valor: it[3] };
+  $("#pSku").value = it[0]; $("#pRes").style.display = "none"; renderPrecio();
+}
+$("#pSku").addEventListener("input", e => {
+  const r = buscar(e.target.value), box = $("#pRes");
+  box.style.display = e.target.value.trim() ? "block" : "none"; box.innerHTML = resultadosHtml(r);
+});
+$("#pRes").addEventListener("click", e => { const b = e.target.closest("button[data-sku]"); if (b) elegirPrecioSku(getItem(b.dataset.sku)); });
+[["pDesc", "desc", 100], ["pUtil", "util", 100], ["pPrecio", "precio", 1]].forEach(([id, modo, div]) => {
+  $("#" + id).addEventListener("input", e => {
+    if (!CALC.sku || (esVend() && id === "pPrecio")) return; const v = parseNum(e.target.value);
+    CALC.modo = modo; CALC.valor = isFinite(v) ? v / div : NaN; recalcPrecio(modo);
+  });
+});
+$("#pCant").addEventListener("input", () => recalcPrecio("all"));
+$("#pAgregar").onclick = () => {
+  if (!CALC.sku) return toast("Elige un articulo primero");
+  if (LINES.length >= 15) return toast("La lista ya tiene 15 lineas");
+  const c = parseNum($("#pCant").value);
+  LINES.push({ sku: CALC.sku, cant: c > 0 ? c : 1, modo: CALC.modo, valor: CALC.valor }); saveLines(); renderLista(); toast("Agregado a la lista");
+};
+$("#pAutorizar").onclick = () => {
+  if (!CALC.sku) return toast("Elige un articulo primero");
+  const it = getItem(CALC.sku), r = calcular(it, categoriaActiva(), CALC.modo, CALC.valor), c = parseNum($("#pCant").value);
+  if (!(r.precio > 0)) return toast("Falta un precio valido");
+  prepararAut(it[0], r.precio, c > 0 ? c : 1);
+};
+
+/* ====================== LISTA ====================== */
+function renderLista() {
+  const c = clienteActual(), cat = categoriaActiva();
+  $("#lCliente").textContent = (c ? c[3] + " (" + cat + ")" : "Sin cliente. Categoria " + cat);
+  const t = $("#lTabla");
+  if (!LINES.length) { t.innerHTML = ""; $("#lTotales").innerHTML = '<span class="muted">La lista esta vacia. Agrega articulos (hasta 15).</span>'; return; }
+  const v = esVend();
+  if (v) { let ch = false; LINES.forEach(L => { if (L.modo === "desc") return; const it = getItem(L.sku); if (!it) return;
+      const r = calcular(it, categoriaActiva(), L.modo, L.valor); if (r.desc != null && isFinite(r.desc)) { L.modo = "desc"; L.valor = r.desc; ch = true; } });
+    if (ch) saveLines(); }
+  let h = `<thead><tr><th class="l">Articulo</th>${v ? "" : '<th>Stock</th><th class="cost">Costo</th>'}<th>P. lista</th><th>Desc max</th>
+    <th>Desc %</th>${v ? "" : '<th class="cost">Util %</th>'}<th>Precio</th><th>Cant</th><th>Total</th><th></th></tr></thead><tbody>`;
+  LINES.forEach((L, i) => {
+    const it = getItem(L.sku);
+    if (!it) { h += `<tr data-i="${i}"><td class="l" colspan="${v ? 7 : 10}"><strong>${esc(L.sku)}</strong> <span class="over">no existe en los datos actuales</span></td><td><button class="btn bad" data-act="del">Quitar</button></td></tr>`; return; }
+    h += `<tr data-i="${i}"><td class="name l"><strong>${esc(it[0])}</strong>${it[7] ? "" : ' <span class="tag warn">inactivo</span>'}<small>${esc(it[1])}</small><small class="flag"></small></td>
+      ${v ? "" : `<td>${it[4]}</td><td class="cost c-costo"></td>`}<td class="c-pl"></td><td>${pct(it[3])}</td>
+      <td><input type="text" inputmode="decimal" data-f="desc"></td>
+      ${v ? "" : '<td><input type="text" inputmode="decimal" data-f="util" class="cost"></td>'}
+      <td><input type="text" inputmode="decimal" data-f="precio"${v ? " readonly" : ""}></td>
+      <td><input type="text" inputmode="decimal" data-f="cant" value="${esc(L.cant)}"></td>
+      <td class="c-total"></td>
+      <td style="white-space:nowrap">${v ? "" : '<button class="btn sec" data-act="aut">Autorizar</button> '}<button class="btn bad" data-act="del">Quitar</button></td></tr>`;
+  });
+  t.innerHTML = h + "</tbody>";
+  $$("#lTabla tbody tr").forEach(tr => recalcFila(+tr.dataset.i));
+  recalcTotales();
+}
+function recalcFila(i, skip) {
+  const L = LINES[i], it = getItem(L.sku), tr = $(`#lTabla tr[data-i="${i}"]`); if (!it || !tr) return;
+  const cat = categoriaActiva(), r = calcular(it, cat, L.modo, L.valor);
+  const set = (f, v) => { const e = $(`[data-f="${f}"]`, tr); if (!e) return; if (f !== skip) e.value = v; e.classList.toggle("drv", f === L.modo); };
+  set("desc", pctIn(r.desc)); set("util", pctIn(r.util)); set("precio", num2(r.precio));
+  if (!esVend()) $(".c-costo", tr).textContent = money(r.costo);
+  $(".c-pl", tr).textContent = money(r.pl);
+  $(".c-total", tr).textContent = r.precio > 0 && L.cant > 0 ? money(r.precio * L.cant) : "-";
+  const av = avisos(it, cat, r).filter(a => a[0] === "bad");
+  $(".flag", tr).innerHTML = av.map(a => `<span class="over">${esc(a[1])}</span>`).join(" | ");
+}
+function recalcTotales() {
+  const cat = categoriaActiva(); let venta = 0, costo = 0, exceso = 0, sinCosto = 0;
+  LINES.forEach(L => {
+    const it = getItem(L.sku); if (!it) return; const r = calcular(it, cat, L.modo, L.valor);
+    if (!(r.precio > 0) || !(L.cant > 0)) return;
+    venta += r.precio * L.cant;
+    if (it[2] == null) sinCosto++; else costo += it[2] * L.cant;
+    if (r.desc != null && r.desc > it[3] + 1e-6) exceso++;
+  });
+  const util = venta - costo;
+  if (esVend()) {
+    let base = 0, fin = 0;
+    LINES.forEach(L => { const it = getItem(L.sku); if (!it) return; const r = calcular(it, cat, L.modo, L.valor);
+      if (!(r.precio > 0) || !(L.cant > 0)) return; const x = lineaVend(r.precio, L.cant); base += x.base; fin += x.final; });
+    $("#lTotales").innerHTML = `<dl class="kv"><dt>Total venta</dt><dd>${money(base)}</dd><dt>I.V.A. (13%)</dt><dd>${money(rd(fin - base))}</dd>
+      <dt>Total + I.V.A.</dt><dd>${money(fin)}</dd></dl><div class="muted" style="margin-top:8px">${esc(textoValidez())}</div>
+      ${exceso ? `<div class="msg bad">${exceso === 1 ? "1 línea supera" : exceso + " líneas superan"} el descuento máximo. Requiere Autorización.</div>` : ""}`;
+    return;
+  }
+  $("#lTotales").innerHTML = `<dl class="kv"><dt>Total venta</dt><dd>${money(venta)}</dd>
+    <dt>Total costo</dt><dd class="cost">${money(costo)}</dd><dt>Utilidad</dt><dd class="cost">${money(util)}</dd>
+    <dt>Margen</dt><dd class="cost">${venta > 0 ? pct(util / venta) : "-"}</dd></dl>
+    ${exceso ? `<div class="msg bad">${exceso} linea(s) exceden el descuento maximo</div>` : ""}
+    ${sinCosto ? `<div class="msg warn">${sinCosto} linea(s) sin costo: el margen no las incluye</div>` : ""}`;
+}
+$("#lTabla").addEventListener("input", e => {
+  const inp = e.target.closest("input[data-f]"); if (!inp) return;
+  const i = +inp.closest("tr").dataset.i, L = LINES[i], f = inp.dataset.f, v = parseNum(inp.value);
+  if (f === "precio" && esVend()) return;
+  if (f === "cant") L.cant = isFinite(v) ? v : 0;
+  else { L.modo = f; L.valor = isFinite(v) ? (f === "precio" ? v : v / 100) : NaN; }
+  saveLines(); recalcFila(i, f); recalcTotales();
+});
+$("#lTabla").addEventListener("click", e => {
+  const b = e.target.closest("button[data-act]"); if (!b) return; const i = +b.closest("tr").dataset.i;
+  if (b.dataset.act === "del") { LINES.splice(i, 1); saveLines(); renderLista(); }
+  else { const L = LINES[i], it = getItem(L.sku), r = calcular(it, categoriaActiva(), L.modo, L.valor);
+    if (!(r.precio > 0)) return toast("Falta un precio valido"); prepararAut(it[0], r.precio, L.cant > 0 ? L.cant : 1); }
+});
+$("#lAgregar").onclick = () => {
+  if (LINES.length >= 15) return toast("La lista ya tiene 15 lineas");
+  pickSku(it => { if (!it) return; LINES.push({ sku: it[0], cant: 1, modo: "desc", valor: it[3] }); saveLines(); renderLista(); });
+};
+$("#lLimpiar").onclick = () => { if (LINES.length && confirm("Borrar toda la lista?")) { LINES = []; saveLines(); renderLista(); } };
+
+/* ====================== AUTORIZACION ====================== */
+function consecStr() {
+  const n = (lsGet("consecN", 0) + 1) % 1000; lsSet("consecN", n);
+  const d = new Date();
+  return pad(n, 3) + "-" + (100 + Math.floor(Math.random() * 900)) + "-" + pad(d.getDate()) + "-" + pad(d.getHours()) + "-" + pad(d.getMinutes()) + "-" + pad(d.getSeconds());
+}
+function nuevoConsec() { AUT.consec = consecStr(); }
+function prepararAut(sku, precio, cant) {
+  if (esVend()) return;
+  AUT.sku = sku; AUT.precio = rd(precio); AUT.cant = cant;
+  // Con 2 o mas gerentes se limpia: cada autorizacion exige elegir quien la firma (evita heredar el nombre del anterior).
+  AUT.autoriza = CFG.gerentes.length === 1 ? CFG.gerentes[0] : "";
+  AUT.fecha = isoDate(new Date()); AUT.validez = isoDate(finMes(new Date())); nuevoConsec(); saveAut(); renderAut(); showTab("aut");
+}
+function datosAut() {
+  const it = getItem(AUT.sku), c = clienteActual();
+  const cant = AUT.cant, precio = AUT.precio, sub = cant * precio, total = AUT.iva ? sub * 1.13 : sub;
+  const f = s => { if (!s) return ""; const [y, m, d] = s.split("-"); return d + "/" + m + "/" + y; };
+  return {
+    filas: [
+      ["Unidades - Cantidad", isFinite(cant) ? String(cant) : ""],
+      ["Precio ESPECIAL Minimo", money(precio)],
+      [AUT.sku || "Articulo", it ? it[1] : ""],
+      ["Gerente que autoriza", AUT.autoriza || ""],
+      ["Fecha", f(AUT.fecha)], ["Validez hasta", f(AUT.validez)],
+      ["Concesionario", c ? c[0] : ""], ["Zona", c ? c[1] : ""], ["Codigo Cliente", c ? c[2] : ""], ["Cliente", c ? c[3] : ""],
+      [AUT.iva ? "Total Negocio + I.V.A." : "Total Negocio (sin I.V.A.)", money(total)],
+      ["Consecutivo", AUT.consec]
+    ], it, sub, total
+  };
+}
+function renderAut() {
+  $("#aCant").value = AUT.cant || ""; $("#aPrecio").value = num2(AUT.precio);
+  $("#aSkuTxt").value = AUT.sku ? AUT.sku : "";
+  if (!AUT.autoriza && CFG.gerentes.length === 1) { AUT.autoriza = CFG.gerentes[0]; saveAut(); }
+  renderGerentes();
+  $("#aFecha").value = AUT.fecha || ""; $("#aValidez").value = AUT.validez || ""; $("#aIva").checked = !!AUT.iva; $("#aConsec").value = AUT.consec || "";
+  pintarAut();
+}
+function pintarAut() {
+  const d = datosAut();
+  $("#aFalta").innerHTML = AUT.autoriza ? "" : `<div class="msg bad">${CFG.gerentes.length ? "Falta elegir el gerente que autoriza." : "No hay gerentes en la lista. Agrega uno en el campo Gerente que autoriza."} Sin este dato no se puede compartir ni copiar.</div>`;
+  $("#aPrev").innerHTML = `<div class="h">AUTORIZACION DE PRECIO ESPECIAL</div><table>${d.filas.map(r => `<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td></tr>`).join("")}</table>`;
+  let m = "-", u = "-";
+  if (d.it && d.it[2] != null && AUT.precio > 0) { const x = (AUT.precio - d.it[2]) / AUT.precio; m = pct(x); u = money((AUT.precio - d.it[2]) * AUT.cant); }
+  const pl = d.it ? precioLista(d.it, categoriaActiva()) : null;
+  $("#aInterno").innerHTML = `<dt>Margen (utilidad %)</dt><dd class="cost">${m}</dd><dt>Utilidad del negocio</dt><dd class="cost">${u}</dd>
+    <dt>Descuento vs lista</dt><dd>${pl ? pct((pl - AUT.precio) / pl) : "-"}</dd>`;
+}
+function leerAut() {
+  const c = parseNum($("#aCant").value), p = parseNum($("#aPrecio").value);
+  AUT.cant = isFinite(c) ? c : 0; AUT.precio = isFinite(p) ? p : 0; AUT.fecha = $("#aFecha").value; AUT.validez = $("#aValidez").value;
+  AUT.iva = $("#aIva").checked; saveAut(); pintarAut();
+}
+["aCant", "aPrecio", "aFecha", "aValidez", "aIva"].forEach(id => $("#" + id).addEventListener("input", leerAut));
+
+/* ---- gerentes que autorizan (lista por tableta, no viaja en el paquete) ---- */
+const limpiaNombre = s => String(s == null ? "" : s).replace(/\s+/g, " ").trim().slice(0, 60);
+function agregarGerente(txt) {
+  const n = limpiaNombre(txt); if (!n) return null;
+  const ya = CFG.gerentes.find(g => norm(g) === norm(n)); if (ya) return ya;
+  CFG.gerentes.push(n); CFG.gerentes.sort((a, b) => a.localeCompare(b, "es")); saveCfg(); return n;
+}
+function quitarGerente(n) {
+  CFG.gerentes = CFG.gerentes.filter(g => g !== n); saveCfg();
+  if (AUT.autoriza === n) { AUT.autoriza = ""; saveAut(); }
+  if (PROY.autoriza === n) { PROY.autoriza = ""; saveProy(); }
+}
+function llenaSelectGerente(sel, actual) {
+  sel.innerHTML = '<option value="">Elegir gerente...</option>' + CFG.gerentes.map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join("") + '<option value="__nuevo">+ Agregar gerente...</option>';
+  sel.value = CFG.gerentes.includes(actual) ? actual : "";
+}
+function renderGerentes() {
+  llenaSelectGerente($("#aGerente"), AUT.autoriza); llenaSelectGerente($("#yGerente"), PROY.autoriza);
+  $("#dGerentes").innerHTML = CFG.gerentes.length
+    ? CFG.gerentes.map(g => `<div class="row" style="align-items:center;margin-bottom:6px"><span style="flex:1 1 auto">${esc(g)}</span><button class="btn bad" type="button" data-quitar="${esc(g)}" style="flex:0 0 auto;min-height:40px">Quitar</button></div>`).join("")
+    : '<p class="muted" style="margin:0">Aun no hay gerentes. Agrega al menos uno.</p>';
+}
+function ligarGerente(ids, obj, guardar, repintar) {
+  const sel = $("#" + ids[0]), box = $("#" + ids[1]), txt = $("#" + ids[2]), ok = $("#" + ids[3]);
+  sel.addEventListener("change", e => {
+    if (e.target.value === "__nuevo") {
+      e.target.value = CFG.gerentes.includes(obj().autoriza) ? obj().autoriza : "";
+      box.style.display = "flex"; txt.value = ""; txt.focus(); return;
+    }
+    box.style.display = "none"; obj().autoriza = e.target.value; guardar(); repintar();
+  });
+  ok.onclick = () => {
+    const n = agregarGerente(txt.value); if (!n) return toast("Escribe el nombre del gerente");
+    obj().autoriza = n; guardar(); box.style.display = "none"; renderGerentes(); repintar(); toast("Gerente agregado");
+  };
+  txt.addEventListener("keydown", e => { if (e.key === "Enter") ok.click(); });
+}
+ligarGerente(["aGerente", "aGerenteNuevo", "aGerenteTxt", "aGerenteOk"], () => AUT, saveAut, pintarAut);
+ligarGerente(["yGerente", "yGerenteNuevo", "yGerenteTxt", "yGerenteOk"], () => PROY, saveProy, pintarProy);
+$("#dGerenteAdd").onclick = () => {
+  const n = agregarGerente($("#dGerenteTxt").value); if (!n) return toast("Escribe el nombre del gerente");
+  $("#dGerenteTxt").value = ""; renderGerentes(); pintarAut(); pintarProy(); toast("Gerente agregado");
+};
+$("#dGerenteTxt").addEventListener("keydown", e => { if (e.key === "Enter") $("#dGerenteAdd").click(); });
+$("#dGerentes").addEventListener("click", e => {
+  const b = e.target.closest("button[data-quitar]"); if (!b) return;
+  if (!confirm("Quitar a " + b.dataset.quitar + " de la lista de gerentes?")) return;
+  quitarGerente(b.dataset.quitar); renderGerentes(); pintarAut(); pintarProy();
+});
+$("#aSkuBtn").onclick = () => pickSku(it => { if (!it) return; AUT.sku = it[0]; $("#aSkuTxt").value = it[0]; saveAut(); pintarAut(); });
+$("#aNuevoConsec").onclick = () => { nuevoConsec(); saveAut(); $("#aConsec").value = AUT.consec; pintarAut(); };
+$("#aCopiar").onclick = async () => {
+  if (!AUT.autoriza) return toast("Elige el gerente que autoriza");
+  const t = "AUTORIZACION DE PRECIO ESPECIAL\n" + datosAut().filas.map(r => r[0] + ": " + r[1]).join("\n");
+  try { await navigator.clipboard.writeText(t); toast("Texto copiado"); } catch (e) { toast("No se pudo copiar"); }
+};
+function wrap(ctx, text, maxW) {
+  const words = String(text).split(/\s+/), lines = []; let cur = "";
+  for (const w of words) { const t = cur ? cur + " " + w : w; if (ctx.measureText(t).width > maxW && cur) { lines.push(cur); cur = w; } else cur = t; }
+  if (cur) lines.push(cur); return lines.length ? lines : [""];
+}
+function tarjetaCanvas() {
+  const d = datosAut(), W = 960, pad0 = 28, lab = 390, lh = 34, cv = document.createElement("canvas"), ctx = cv.getContext("2d");
+  ctx.font = "26px sans-serif"; const prep = d.filas.map(r => wrap(ctx, r[1], W - pad0 * 2 - lab - 10));
+  const H = 90 + prep.reduce((s, l) => s + Math.max(1, l.length) * lh + 18, 0) + 20; cv.width = W; cv.height = H;
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#16202c"; ctx.fillRect(0, 0, W, 70);
+  ctx.fillStyle = "#fff"; ctx.font = "bold 30px sans-serif"; ctx.textBaseline = "middle"; ctx.fillText("AUTORIZACION DE PRECIO ESPECIAL", pad0, 36);
+  let y = 70; ctx.textBaseline = "alphabetic";
+  d.filas.forEach((r, i) => {
+    const hh = Math.max(1, prep[i].length) * lh + 18;
+    ctx.strokeStyle = "#cfd6de"; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    ctx.fillStyle = "#5d6b7c"; ctx.font = "24px sans-serif"; ctx.fillText(r[0], pad0, y + 32);
+    ctx.fillStyle = "#16202c"; ctx.font = "bold 26px sans-serif"; prep[i].forEach((ln, k) => ctx.fillText(ln, pad0 + lab, y + 32 + k * lh));
+    y += hh;
+  });
+  ctx.strokeStyle = "#16202c"; ctx.lineWidth = 3; ctx.strokeRect(1.5, 1.5, W - 3, H - 3);
+  return cv;
+}
+$("#aCompartir").onclick = () => {
+  if (!AUT.sku) return toast("Falta el articulo");
+  if (!AUT.autoriza) return toast("Elige el gerente que autoriza");
+  tarjetaCanvas().toBlob(async blob => {
+    const file = new File([blob], "autorizacion_" + (AUT.consec || "x") + ".png", { type: "image/png" });
+    try {
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: "Autorizacion de precio especial" }); return; }
+    } catch (e) { if (e && e.name === "AbortError") return; }
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = file.name; a.click(); toast("Imagen descargada");
+  }, "image/png");
+};
+
+/* ====================== OFERTA PARA EL CLIENTE (imagen, solo vendedores) ====================== */
+function ofertaCanvas(cli, lineas) {
+  const W = 1100, pad0 = 28, lh = 28, cv = document.createElement("canvas"), ctx = cv.getContext("2d");
+  const X = { cod: pad0, desc: 250, precio: 770, cant: 860, fin: W - pad0 };
+  const hoy = new Date(), hasta = validezHasta(hoy);
+  ctx.font = "22px sans-serif";
+  const nom = wrap(ctx, cli[3], W - pad0 * 2 - 130);
+  const filas = lineas.map(l => ({ l, d: wrap(ctx, l.desc, X.precio - X.desc - 130) }));
+  const hFilas = filas.map(f => Math.max(1, f.d.length) * lh + 18);
+  const multi = lineas.length > 1;
+  const H = 86 + (nom.length * lh + 50) + 44 + hFilas.reduce((a, b) => a + b, 0) + (multi ? 56 : 0) + 110;
+  cv.width = W; cv.height = H;
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#16202c"; ctx.fillRect(0, 0, W, 76);
+  ctx.fillStyle = "#fff"; ctx.textBaseline = "alphabetic"; ctx.font = "bold 32px sans-serif"; ctx.fillText("OFERTA DE PRECIOS", pad0, 38);
+  ctx.font = "20px sans-serif"; ctx.fillText("Importaciones Industriales MASACA", pad0, 64);
+  let y = 76 + 38;
+  ctx.fillStyle = "#5d6b7c"; ctx.font = "22px sans-serif"; ctx.fillText("Cliente", pad0, y);
+  ctx.fillStyle = "#16202c"; ctx.font = "bold 24px sans-serif"; nom.forEach((ln, k) => ctx.fillText(ln, pad0 + 130, y + k * lh));
+  y += nom.length * lh + 12;
+  // encabezado de tabla
+  ctx.fillStyle = "#eef1f5"; ctx.fillRect(0, y, W, 40);
+  ctx.fillStyle = "#5d6b7c"; ctx.font = "bold 18px sans-serif"; const ty = y + 27;
+  ctx.textAlign = "left"; ctx.fillText("CÓDIGO", X.cod, ty); ctx.fillText("DESCRIPCIÓN", X.desc, ty);
+  ctx.textAlign = "right"; ctx.fillText("PRECIO UNIT.", X.precio, ty); ctx.fillText("CANT.", X.cant, ty); ctx.fillText("FINAL + I.V.A.", X.fin, ty);
+  y += 40;
+  filas.forEach((f, i) => {
+    ctx.strokeStyle = "#cfd6de"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, y + hFilas[i]); ctx.lineTo(W, y + hFilas[i]); ctx.stroke();
+    const by = y + 30;
+    ctx.fillStyle = "#16202c"; ctx.textAlign = "left"; ctx.font = "bold 20px sans-serif"; ctx.fillText(f.l.cod, X.cod, by);
+    ctx.font = "22px sans-serif"; f.d.forEach((ln, k) => ctx.fillText(ln, X.desc, by + k * lh));
+    ctx.textAlign = "right"; ctx.fillText(money(f.l.precio), X.precio, by); ctx.fillText(String(f.l.cant), X.cant, by);
+    ctx.font = "bold 22px sans-serif"; ctx.fillText(money(f.l.final), X.fin, by);
+    y += hFilas[i];
+  });
+  if (multi) {
+    const tot = lineas.reduce((a, l) => a + l.final, 0);
+    ctx.textAlign = "left"; ctx.fillStyle = "#16202c"; ctx.font = "bold 24px sans-serif"; ctx.fillText("TOTAL + I.V.A.", X.cod, y + 38);
+    ctx.textAlign = "right"; ctx.fillText(money(tot), X.fin, y + 38); y += 56;
+  }
+  y += 18;
+  ctx.fillStyle = "#fff6e0"; ctx.fillRect(pad0, y, W - pad0 * 2, 70);
+  ctx.strokeStyle = "#e0b04a"; ctx.lineWidth = 2; ctx.strokeRect(pad0, y, W - pad0 * 2, 70);
+  ctx.textAlign = "left"; ctx.fillStyle = "#16202c"; ctx.font = "bold 24px sans-serif";
+  ctx.fillText("Validez de la oferta: hasta el " + fmtF(hasta), pad0 + 16, y + 30);
+  ctx.font = "18px sans-serif"; ctx.fillStyle = "#5d6b7c";
+  ctx.fillText(DIAS_VALIDEZ + " días naturales desde la fecha del cálculo (" + fmtF(hoy) + "). Precios en colones.", pad0 + 16, y + 56);
+  ctx.strokeStyle = "#16202c"; ctx.lineWidth = 3; ctx.strokeRect(1.5, 1.5, W - 3, H - 3);
+  return cv;
+}
+function compartirOferta(cv, cli) {
+  cv.toBlob(async blob => {
+    const nom = "oferta_" + norm(cli[3]).replace(/[^a-z0-9]+/g, "_").slice(0, 30) + "_" + isoDate(new Date()) + ".png";
+    const file = new File([blob], nom, { type: "image/png" });
+    try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: "Oferta de precios" }); return; } }
+    catch (e) { if (e && e.name === "AbortError") return; }
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nom; a.click(); toast("Imagen descargada");
+  }, "image/png");
+}
+function exportarOferta(pares) {   // pares: [{it, r, cant}]
+  if (!esVend()) return;
+  const cli = clienteActual(); if (!cli) return toast("Elige un cliente primero");
+  if (!pares.length) return toast("No hay articulos para exportar");
+  const lineas = [];
+  for (const p of pares) {
+    if (!(p.r.precio > 0)) return toast("Falta un precio válido en " + p.it[0]);
+    if (!(p.cant > 0)) return toast("Falta la cantidad en " + p.it[0]);
+    if (p.r.desc != null && p.r.desc > p.it[3] + 1e-6) return toast(MSG_EXCESO_VEND);
+    const x = lineaVend(p.r.precio, p.cant);
+    lineas.push({ cod: p.it[0], desc: p.it[1], precio: rd(p.r.precio), cant: p.cant, final: x.final });
+  }
+  compartirOferta(ofertaCanvas(cli, lineas), cli);
+}
+$("#pExportar").onclick = () => {
+  if (!CALC.sku) return toast("Elige un articulo primero");
+  const it = getItem(CALC.sku); exportarOferta([{ it, r: calcular(it, categoriaActiva(), CALC.modo, CALC.valor), cant: parseNum($("#pCant").value) }]);
+};
+$("#lExportar").onclick = () => exportarOferta(LINES.map(L => getItem(L.sku) ? { it: getItem(L.sku), r: calcular(getItem(L.sku), categoriaActiva(), L.modo, L.valor), cant: L.cant } : null).filter(Boolean));
+
+/* ====================== PROYECTO (autorizacion de proyecto, solo gerencia) ====================== */
+// Regla de la hoja Proyecto 1: Precio ESPECIAL Minimo = Costo / (1 - Utilidad). Aqui se redondea HACIA ARRIBA al centimo
+// (nunca por debajo del minimo) y el total de la linea es precio x cantidad, para que la imagen cuadre con la orden.
+const ceil2 = x => Math.ceil(parseFloat((x * 100).toPrecision(12))) / 100;
+const numEn = n => n == null || !isFinite(n) ? "" : rd(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fCorta = d => pad(d.getDate()) + "-" + pad(d.getMonth() + 1) + "-" + String(d.getFullYear()).slice(2);
+const fIsoCorta = s => { if (!s) return ""; const [y, m, d] = s.split("-"); return d + "-" + m + "-" + String(y).slice(2); };
+function lineaProy(L) {
+  const it = getItem(L.sku); if (!it) return { it: null };
+  const u = L.util != null && isFinite(L.util) ? L.util : PROY.util;
+  const utilOk = typeof u === "number" && isFinite(u) && u >= 0 && u < 1, costoOk = it[2] != null && it[2] > 0;
+  const r = calcular(it, categoriaActiva(), "util", utilOk ? u : NaN);
+  const precio = costoOk && utilOk && r.precio > 0 ? ceil2(r.precio) : null;
+  const cant = L.cant > 0 ? L.cant : 0;
+  const total = precio != null && cant > 0 ? rd(precio * cant) : null;
+  const costoTot = costoOk && cant > 0 ? rd(it[2] * cant) : null;
+  const pl = r.pl, pMax = pl != null ? pl * (1 - it[3]) : null;
+  return { it, u, utilOk, costoOk, precio, cant, total, costoTot, pl, pMax,
+    descReal: precio != null && pl ? (pl - precio) / pl : null, utilReal: precio != null ? (precio - it[2]) / precio : null };
+}
+function totalesProy() {
+  let neg = 0, costo = 0, n = 0;
+  PROY.lines.forEach(L => { const x = lineaProy(L); if (x.total == null) return; neg += x.total; costo += x.costoTot || 0; n++; });
+  neg = rd(neg); costo = rd(costo);
+  return { neg, costo, util: rd(neg - costo), margen: neg > 0 ? (neg - costo) / neg : null, n };
+}
+function problemasProy() {
+  const p = [];
+  if (!DATA) p.push("No hay datos cargados");
+  if (!PROY.lines.length) p.push("Agrega al menos un articulo");
+  if (!clienteActual()) p.push("Elige el cliente en la pestana Clientes");
+  if (!PROY.autoriza) p.push("Elige el gerente que autoriza");
+  if (!PROY.validez) p.push("Falta la fecha de validez");
+  else if (PROY.validez < isoDate(new Date())) p.push("La validez ya vencio (" + fIsoCorta(PROY.validez) + ")");
+  PROY.lines.forEach((L, i) => {
+    const x = lineaProy(L), n = "Linea " + (i + 1) + " (" + L.sku + "): ";
+    if (!x.it) { p.push(n + "no existe en los datos actuales"); return; }
+    if (!x.costoOk) p.push(n + "sin costo, no se puede calcular el precio");
+    else if (!x.utilOk) p.push(n + "utilidad fuera de rango (de 0% a menos de 100%)");
+    if (!(x.cant > 0)) p.push(n + "falta la cantidad");
+  });
+  return p;
+}
+function avisosProy() {
+  const w = [], vistos = {};
+  if (!PROY.ov.trim()) w.push("Sin numero de OV: la imagen saldra sin esa linea.");
+  PROY.lines.forEach((L, i) => {
+    const x = lineaProy(L), n = "Linea " + (i + 1) + " (" + L.sku + "): "; if (!x.it) return;
+    vistos[L.sku] = (vistos[L.sku] || 0) + 1;
+    if (!x.it[7]) w.push(n + "articulo inactivo en Zoho.");
+    if (x.precio != null && x.pl == null) w.push(n + "sin precio de lista para la categoria " + categoriaActiva() + ".");
+    if (x.precio != null && x.pl != null && x.precio > x.pl + 0.005) w.push(n + "el precio especial supera el precio de lista.");
+  });
+  Object.keys(vistos).forEach(k => { if (vistos[k] > 1) w.push("SKU repetido en el proyecto: " + k + " (" + vistos[k] + " lineas)."); });
+  if (PROY.lines.length > POR_PAGINA) w.push("Son " + PROY.lines.length + " lineas: se generaran " + Math.ceil(PROY.lines.length / POR_PAGINA) + " imagenes de hasta " + POR_PAGINA + " lineas.");
+  return w;
+}
+function pintarProy() {
+  const t = totalesProy(), pr = DATA ? problemasProy() : [], w = DATA ? avisosProy() : [];
+  $("#yTotales").innerHTML = `<dl class="kv"><dt>Lineas completas</dt><dd>${t.n} de ${PROY.lines.length}</dd>
+    <dt>Total del negocio (sin I.V.A.)</dt><dd class="big">${money(t.neg)}</dd>
+    <dt>Costo total (interno)</dt><dd class="cost">${money(t.costo)}</dd><dt>Utilidad (interno)</dt><dd class="cost">${money(t.util)}</dd>
+    <dt>Margen del negocio (interno)</dt><dd class="cost">${t.margen == null ? "-" : pct(t.margen)}</dd></dl>
+    <p class="muted" style="margin:8px 0 0">El costo, la utilidad y el margen no aparecen en la imagen.</p>`;
+  const shown = pr.slice(0, 6).map(x => `<div class="msg bad">${esc(x)}</div>`).join("") + (pr.length > 6 ? `<div class="msg bad">y ${pr.length - 6} problema(s) mas.</div>` : "");
+  $("#yAvisos").innerHTML = shown + w.slice(0, 6).map(x => `<div class="msg warn">${esc(x)}</div>`).join("") + (w.length > 6 ? `<div class="msg warn">y ${w.length - 6} aviso(s) mas.</div>` : "");
+  $("#yConteo").textContent = PROY.lines.length ? "(" + PROY.lines.length + " de " + MAX_PROY + ")" : "";
+  const c = clienteActual();
+  $("#yCliente").innerHTML = c ? `<div class="muted">Cliente: <strong style="color:var(--ink)">${esc(c[3])}</strong> (${esc(c[2])}) | ${esc(c[0])} | ${esc(c[1])} | Categoria ${esc(c[4])}</div>`
+    : '<div class="msg bad" style="margin:0">Elige el cliente en la pestana Clientes.</div>';
+}
+function renderProyTabla() {
+  const t = $("#yTabla");
+  if (!PROY.lines.length) { t.innerHTML = '<tbody><tr><td class="l muted">Sin lineas. Usa Agregar articulo.</td></tr></tbody>'; return; }
+  if (!DATA) { t.innerHTML = '<tbody><tr><td class="l muted">Sin datos cargados.</td></tr></tbody>'; return; }
+  let h = `<thead><tr><th class="l">#</th><th class="l">Articulo</th><th class="cost">Costo</th><th>P. lista</th><th>Desc max</th>
+    <th class="cost">Util %</th><th>Precio ESPECIAL min</th><th>Cant</th><th>Total</th><th></th></tr></thead><tbody>`;
+  PROY.lines.forEach((L, i) => {
+    if (!getItem(L.sku)) { h += `<tr data-i="${i}"><td class="l muted">${i + 1}</td><td class="l" colspan="8"><strong>${esc(L.sku)}</strong> <span class="over">no existe en los datos actuales</span></td><td><button class="btn bad" type="button" data-act="del">Quitar</button></td></tr>`; return; }
+    const it = getItem(L.sku);
+    h += `<tr data-i="${i}"><td class="l muted">${i + 1}</td>
+      <td class="name l"><strong>${esc(it[0])}</strong><small>${esc(it[1])}</small><small class="flag"></small></td>
+      <td class="cost c-costo"></td><td class="c-pl"></td><td class="c-dmax"></td>
+      <td><input type="text" inputmode="decimal" data-f="util" class="cost" placeholder="${esc(pctIn(PROY.util))}" value="${L.util != null && isFinite(L.util) ? esc(pctIn(L.util)) : ""}"></td>
+      <td class="c-precio" style="font-weight:700"></td>
+      <td><input type="text" inputmode="decimal" data-f="cant" value="${esc(L.cant)}"></td>
+      <td class="c-total"></td>
+      <td><button class="btn bad" type="button" data-act="del">Quitar</button></td></tr>`;
+  });
+  t.innerHTML = h + "</tbody>";
+  PROY.lines.forEach((L, i) => recalcFilaProy(i));
+}
+function recalcFilaProy(i) {
+  const L = PROY.lines[i], tr = $(`#yTabla tr[data-i="${i}"]`); if (!L || !tr) return;
+  const x = lineaProy(L); if (!x.it || !$(".c-costo", tr)) return;
+  $(".c-costo", tr).textContent = money(x.it[2]); $(".c-pl", tr).textContent = money(x.pl); $(".c-dmax", tr).textContent = pct(x.it[3]);
+  $(".c-precio", tr).textContent = x.precio != null ? money(x.precio) : "-"; $(".c-total", tr).textContent = x.total != null ? money(x.total) : "-";
+  const f = [];
+  if (!x.costoOk) f.push('<span class="over">Sin costo</span>'); else if (!x.utilOk) f.push('<span class="over">Utilidad fuera de rango</span>');
+  if (!(x.cant > 0)) f.push('<span class="over">Falta cantidad</span>');
+  if (!x.it[7]) f.push('<span style="color:var(--warn)">Inactivo en Zoho</span>');
+  if (x.precio != null) {
+    f.push('<span class="muted">Desc. vs lista ' + (x.descReal == null ? "-" : pct(x.descReal)) + ' | Utilidad real ' + pct(x.utilReal) + '</span>');
+    if (x.pMax != null) f.push(x.precio < x.pMax - 0.005 ? '<span class="muted">Bajo el descuento maximo: requiere autorizacion</span>' : '<span class="muted">Dentro del descuento maximo</span>');
+  }
+  $(".flag", tr).innerHTML = f.join(" | ");
+}
+function renderProyecto() {
+  if (!PROY.validez) { PROY.validez = isoDate(finMes(new Date())); saveProy(); }
+  if (!PROY.autoriza && CFG.gerentes.length === 1) { PROY.autoriza = CFG.gerentes[0]; saveProy(); }
+  $("#yOv").value = PROY.ov || ""; $("#yValidez").value = PROY.validez || ""; $("#yUtil").value = pctIn(PROY.util); $("#yConsec").value = PROY.consec || "";
+  renderGerentes(); renderProyTabla(); pintarProy();
+}
+$("#yOv").addEventListener("input", e => { PROY.ov = e.target.value; saveProy(); pintarProy(); });
+$("#yValidez").addEventListener("input", e => { PROY.validez = e.target.value; saveProy(); pintarProy(); });
+$("#yUtil").addEventListener("input", e => {
+  const v = parseNum(e.target.value); PROY.util = isFinite(v) ? v / 100 : null; saveProy();
+  $$('#yTabla input[data-f="util"]').forEach(inp => { inp.placeholder = pctIn(PROY.util); });
+  PROY.lines.forEach((L, i) => recalcFilaProy(i)); pintarProy();
+});
+$("#yNuevoConsec").onclick = () => { PROY.consec = consecStr(); saveProy(); $("#yConsec").value = PROY.consec; };
+$("#yAgregar").onclick = () => {
+  if (PROY.lines.length >= MAX_PROY) return toast("El proyecto ya tiene " + MAX_PROY + " lineas");
+  pickSku(it => { if (!it) return; PROY.lines.push({ sku: it[0], cant: 1, util: null }); saveProy(); renderProyTabla(); pintarProy(); });
+};
+$("#yTabla").addEventListener("input", e => {
+  const inp = e.target.closest("input[data-f]"); if (!inp) return;
+  const i = +inp.closest("tr").dataset.i, L = PROY.lines[i], v = parseNum(inp.value);
+  if (inp.dataset.f === "cant") L.cant = isFinite(v) ? v : 0; else L.util = isFinite(v) ? v / 100 : null;
+  saveProy(); recalcFilaProy(i); pintarProy();
+});
+$("#yTabla").addEventListener("click", e => {
+  const b = e.target.closest("button[data-act]"); if (!b) return;
+  PROY.lines.splice(+b.closest("tr").dataset.i, 1); saveProy(); renderProyTabla(); pintarProy();
+});
+$("#yNuevo").onclick = () => {
+  if (PROY.lines.length && !confirm("Empezar un proyecto nuevo? Se borran las lineas actuales.")) return;
+  PROY.lines = []; PROY.ov = ""; PROY.validez = ""; PROY.consec = ""; PROY.shared = null;
+  PROY.autoriza = CFG.gerentes.length === 1 ? CFG.gerentes[0] : ""; saveProy(); renderProyecto(); toast("Proyecto nuevo");
+};
+
+/* ---- imagen de autorizacion (paginas de hasta 40 lineas) ---- */
+function proyDatos() {
+  const c = clienteActual(), hoy = new Date();
+  const lineas = PROY.lines.map(lineaProy).filter(x => x.it).map(x => ({ cod: x.it[0], desc: x.it[1], precio: x.precio, cant: x.cant, total: x.total }));
+  const filas = [["Orden de Venta", PROY.ov.trim()], ["Concesionario", c[0]], ["Zona", c[1]], ["Codigo Cliente", c[2]], ["Cliente", c[3]],
+    ["Fecha", fCorta(hoy)], ["Consecutivo", PROY.consec], ["Autoriza", PROY.autoriza], ["Validez", fIsoCorta(PROY.validez), "rojo"], ["Categorizacion", categoriaActiva()]].filter(f => f[1]);
+  return { filas, lineas, total: rd(lineas.reduce((a, l) => a + l.total, 0)) };
+}
+function hashProy() {
+  const d = proyDatos(), c = clienteActual();
+  return JSON.stringify([c[2], PROY.ov.trim(), PROY.validez, PROY.autoriza, d.lineas.map(l => [l.cod, l.cant, l.precio])]);
+}
+// Si ya se compartio una version con este consecutivo y el contenido cambio, se genera un consecutivo nuevo:
+// dos imagenes con el mismo consecutivo nunca deben mostrar totales distintos.
+function asegurarConsecProy() {
+  if (!PROY.consec) PROY.consec = consecStr();
+  else if (PROY.shared && PROY.shared.consec === PROY.consec && PROY.shared.hash !== hashProy()) PROY.consec = consecStr();
+  saveProy(); $("#yConsec").value = PROY.consec;
+}
+function fitText(ctx, txt, maxW, size, bold) {
+  let sz = size; ctx.font = (bold ? "bold " : "") + sz + "px sans-serif";
+  while (sz > 15 && ctx.measureText(txt).width > maxW) { sz--; ctx.font = (bold ? "bold " : "") + sz + "px sans-serif"; }
+}
+function proyCanvases() {
+  const d = proyDatos(), W = 1200, P = 28, lh = 26, rowH = 34, AZ = "#156082", INK = "#16202c";
+  const X = { sku: P, desc: 222, pIni: 716, precio: 880, cant: 980, total: W - P };
+  const med = document.createElement("canvas").getContext("2d"); med.font = "21px sans-serif";
+  const paginas = []; for (let i = 0; i < d.lineas.length; i += POR_PAGINA) paginas.push(d.lineas.slice(i, i + POR_PAGINA));
+  return paginas.map((lin, pi) => {
+    const ultima = pi === paginas.length - 1;
+    const desc = lin.map(l => wrap(med, l.desc, X.pIni - X.desc - 14)), hF = desc.map(a => Math.max(1, a.length) * lh + 14);
+    const yHdr = 80, yTab = yHdr + d.filas.length * rowH + 18, hTab = 84;
+    const H = yTab + hTab + hF.reduce((a, b) => a + b, 0) + 24 + 34 + (ultima ? 66 : 0) + 16;
+    const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const ctx = cv.getContext("2d");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H); ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+    ctx.fillStyle = AZ; ctx.fillRect(0, 0, W, 70);
+    ctx.fillStyle = "#fff"; ctx.font = "bold 30px sans-serif"; ctx.fillText("AUTORIZACION DE PROYECTO", P, 34);
+    ctx.font = "20px sans-serif"; ctx.fillText("Importaciones Industriales MASACA", P, 60);
+    if (paginas.length > 1) { ctx.textAlign = "right"; ctx.fillText("Pagina " + (pi + 1) + " de " + paginas.length, W - P, 34); ctx.textAlign = "left"; }
+    d.filas.forEach((f, i) => {
+      const y = yHdr + i * rowH;
+      if (i % 2 === 0) { ctx.fillStyle = "#d6ecf8"; ctx.fillRect(0, y, 790, rowH); }
+      ctx.fillStyle = INK; ctx.font = "22px sans-serif"; ctx.fillText(f[0], P, y + 24);
+      ctx.fillStyle = f[2] === "rojo" ? "#c00000" : INK; fitText(ctx, f[1], 500, 24, f[2] === "rojo"); ctx.fillText(f[1], 276, y + 25);
+    });
+    // cuadro del total (todas las paginas muestran el total del negocio completo)
+    const bx = 830, bw = W - P - bx, by = yHdr + Math.max(0, d.filas.length - 3) * rowH;
+    ctx.fillStyle = AZ; ctx.fillRect(bx, by, bw, 36); ctx.fillStyle = "#fff"; ctx.font = "bold 20px sans-serif"; ctx.fillText("Total del negocio (sin IVA)", bx + 12, by + 25);
+    ctx.fillStyle = "#fff"; ctx.fillRect(bx, by + 36, bw, 66); ctx.strokeStyle = AZ; ctx.lineWidth = 2; ctx.strokeRect(bx, by + 36, bw, 66);
+    ctx.fillStyle = INK; ctx.textAlign = "right"; fitText(ctx, numEn(d.total), bw - 24, 38, true); ctx.fillText(numEn(d.total), bx + bw - 12, by + 82); ctx.textAlign = "left";
+    // encabezado de tabla
+    ctx.fillStyle = AZ; ctx.fillRect(0, yTab, W, hTab);
+    ctx.fillStyle = "#ffff00"; ctx.fillRect(X.pIni, yTab, X.precio - X.pIni + 10, hTab);
+    ctx.fillStyle = "#fff"; ctx.font = "bold 22px sans-serif"; ctx.fillText("SKU", X.sku, yTab + 50); ctx.fillText("Descripcion", X.desc, yTab + 50);
+    ctx.textAlign = "right"; ctx.fillText("Cant", X.cant, yTab + 50);
+    ctx.font = "bold 20px sans-serif"; ctx.fillText("Total", X.total, yTab + 36); ctx.fillText("Colones sin IVA", X.total, yTab + 62);
+    ctx.fillStyle = "#000"; ctx.textAlign = "center"; const cx = (X.pIni + X.precio + 10) / 2;
+    ctx.fillText("Precio", cx, yTab + 28); ctx.fillText("ESPECIAL", cx, yTab + 52); ctx.fillText("Minimo", cx, yTab + 76); ctx.textAlign = "left";
+    // lineas
+    let y = yTab + hTab;
+    lin.forEach((l, i) => {
+      if (i % 2 === 0) { ctx.fillStyle = "#d6ecf8"; ctx.fillRect(0, y, W, hF[i]); }
+      const by = y + 26; ctx.fillStyle = INK; ctx.textAlign = "left"; ctx.font = "bold 22px sans-serif"; ctx.fillText(l.cod, X.sku, by);
+      ctx.font = "21px sans-serif"; desc[i].forEach((ln, k) => ctx.fillText(ln, X.desc, by + k * lh));
+      ctx.textAlign = "right"; ctx.font = "22px sans-serif"; ctx.fillText(numEn(l.precio), X.precio, by); ctx.fillText(numEn(l.cant), X.cant, by);
+      ctx.font = "bold 22px sans-serif"; ctx.fillText(numEn(l.total), X.total, by); ctx.textAlign = "left";
+      y += hF[i];
+    });
+    ctx.strokeStyle = AZ; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    y += 28; ctx.fillStyle = "#5d6b7c"; ctx.font = "19px sans-serif";
+    const a = pi * POR_PAGINA + 1, b = pi * POR_PAGINA + lin.length, sub = rd(lin.reduce((s, l) => s + l.total, 0));
+    ctx.fillText("Lineas " + a + " a " + b + " de " + d.lineas.length + (paginas.length > 1 ? " | Subtotal de esta pagina: " + numEn(sub) : ""), P, y);
+    if (ultima) {
+      y += 14; ctx.fillStyle = AZ; ctx.fillRect(0, y, W, 56); ctx.fillStyle = "#fff"; ctx.font = "bold 26px sans-serif"; ctx.fillText("TOTAL DEL NEGOCIO (sin IVA)", P, y + 37);
+      ctx.textAlign = "right"; ctx.fillText(numEn(d.total), W - P, y + 37); ctx.textAlign = "left";
+    }
+    ctx.strokeStyle = AZ; ctx.lineWidth = 3; ctx.strokeRect(1.5, 1.5, W - 3, H - 3);
+    return cv;
+  });
+}
+$("#yVista").onclick = () => {
+  const pr = problemasProy(); if (pr.length) return toast(pr[0]);
+  asegurarConsecProy();
+  $("#pvImgs").innerHTML = proyCanvases().map((cv, i) => `<img alt="Pagina ${i + 1}" src="${cv.toDataURL("image/png")}" style="width:100%;border:1px solid var(--line);margin-bottom:10px">`).join("");
+  $("#ovPrev").classList.add("on");
+};
+$("#pvCerrar").onclick = () => $("#ovPrev").classList.remove("on");
+$("#yCompartir").onclick = async () => {
+  const pr = problemasProy(); if (pr.length) return toast(pr[0]);
+  asegurarConsecProy();
+  const cvs = proyCanvases(), hash = hashProy(), consec = PROY.consec;
+  const blobs = await Promise.all(cvs.map(cv => new Promise(r => cv.toBlob(r, "image/png"))));
+  const files = blobs.map((b, i) => new File([b], "autorizacion_proyecto_" + consec + (cvs.length > 1 ? "_p" + (i + 1) + "de" + cvs.length : "") + ".png", { type: "image/png" }));
+  const registrar = () => { PROY.shared = { consec, hash }; saveProy(); };
+  try {
+    if (navigator.canShare && navigator.canShare({ files })) { await navigator.share({ files, title: "Autorizacion de proyecto " + consec }); registrar(); return; }
+  } catch (e) { if (e && e.name === "AbortError") return; }
+  files.forEach((f, i) => setTimeout(() => { const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); }, i * 450));
+  registrar(); toast(files.length > 1 ? files.length + " imagenes descargadas" : "Imagen descargada");
+};
+
+/* ====================== CLIENTES ====================== */
+function renderClientes() {
+  if (!DATA) { $("#cLista").innerHTML = ""; $("#cConteo").textContent = ""; return; }
+  const q = norm($("#cBuscar").value).trim().split(/\s+/).filter(Boolean), g = $("#cGrupo").value, v = $("#cVend").value;
+  const res = DATA.clientes.filter(c => (!g || c[5] === g) && (!v || c[0] === v) && q.every(w => norm(c.join(" ")).indexOf(w) >= 0));
+  $("#cConteo").textContent = res.length + " cliente(s)" + (res.length > 80 ? ", se muestran 80. Afina la busqueda." : "");
+  $("#cLista").innerHTML = res.slice(0, 80).map(c => `<button type="button" data-cod="${esc(c[2])}" class="${c[2] === CFG.cliente ? "sel" : ""}">
+    <strong>${esc(c[3])}</strong> <span class="tag ok">${esc(c[4])}</span><small>${esc(c[2])} | ${esc(c[0])} | ${esc(c[1])} | ${esc(c[5])}</small></button>`).join("");
+}
+["cBuscar", "cGrupo", "cVend"].forEach(id => $("#" + id).addEventListener("input", renderClientes));
+$("#cLista").addEventListener("click", e => {
+  const b = e.target.closest("button[data-cod]"); if (!b) return;
+  CFG.cliente = b.dataset.cod; saveCfg(); renderAll(); toast("Cliente elegido");
+});
+$("#chipCliente").onclick = () => showTab("clientes");
+
+/* ====================== DATOS ====================== */
+function antiguedad() {
+  if (!DATA) return null; const t = new Date(DATA.generado).getTime(); return isFinite(t) ? Math.floor((Date.now() - t) / 864e5) : null;
+}
+function renderDatos() {
+  const d = DATA, a = antiguedad();
+  const chip = $("#chipDatos"); chip.className = "chip" + (a == null ? "" : a <= 2 ? " age-ok" : a <= 7 ? " age-warn" : " age-bad");
+  if (!d) { chip.textContent = "Sin datos"; $("#dEstado").innerHTML = "<dt>Estado</dt><dd>Sin datos cargados</dd>"; $("#dAviso").innerHTML = '<div class="msg warn">Importa un paquete para empezar.</div>'; return; }
+  const g = new Date(d.generado);
+  chip.textContent = "Datos del " + pad(g.getDate()) + "/" + pad(g.getMonth() + 1) + " " + pad(g.getHours()) + ":" + pad(g.getMinutes());
+  $("#dEstado").innerHTML = `<dt>Generado</dt><dd>${fechaCR(g)} ${pad(g.getHours())}:${pad(g.getMinutes())}</dd>
+    <dt>Antiguedad</dt><dd>${a === 0 ? "hoy" : a + " dia(s)"}</dd><dt>Articulos</dt><dd>${d.items.length}</dd><dt>Clientes</dt><dd>${d.clientes.length}</dd>`;
+  $("#dAviso").innerHTML = a > 2 ? `<div class="msg ${a > 7 ? "bad" : "warn"}">Los precios y el stock pueden haber cambiado desde ${fechaCR(g)}. Confirma antes de comprometer un precio.</div>` : "";
+}
+$("#chipDatos").onclick = () => showTab("datos");
+
+function askPass({ titulo, texto, confirmar }) {
+  return new Promise(res => {
+    const ov = $("#ovPass"); $("#psTitulo").textContent = titulo; $("#psTexto").textContent = texto || "";
+    $("#psBox").style.display = confirmar ? "block" : "none"; $("#psA").value = ""; $("#psB").value = ""; $("#psErr").style.display = "none"; ov.classList.add("on");
+    setTimeout(() => $("#psA").focus(), 50);
+    const done = v => { ov.classList.remove("on"); $("#psOk").onclick = $("#psCancel").onclick = null; res(v); };
+    $("#psCancel").onclick = () => done(null);
+    $("#psOk").onclick = () => {
+      const a = $("#psA").value, err = m => { $("#psErr").textContent = m; $("#psErr").style.display = "block"; };
+      if (confirmar) { if (a.length < 8) return err("Usa al menos 8 caracteres."); if (a !== $("#psB").value) return err("Las claves no coinciden."); }
+      else if (!a) return err("Escribe la clave.");
+      done(a);
+    };
+  });
+}
+$("#dImportar").onclick = () => $("#dFile").click();
+$("#lkImp").onclick = () => $("#dFile").click();
+$("#dFile").addEventListener("change", async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  let obj; try { obj = JSON.parse(await f.text()); } catch (er) { return toast("El archivo no es un paquete valido"); }
+  try {
+    if (obj && Array.isArray(obj.items) && Array.isArray(obj.clientes)) {
+      const p = await askPass({ titulo: "Proteger los datos", texto: "Crea una clave para esta tableta. Se pedira cada vez que abras la app. Elimina despues el archivo .json que importaste.", confirmar: true });
+      if (!p) return; toast("Cifrando...");
+      BLOB = await encryptObj(obj, p); await idbSet("paquete", BLOB); $("#ovLock").classList.remove("on"); setData(obj); toast("Datos guardados y protegidos");
+    } else if (obj && obj.salt && obj.data) {
+      const p = await askPass({ titulo: "Abrir paquete cifrado", texto: "Escribe la clave con la que se cifro el paquete.", confirmar: false });
+      if (!p) return; toast("Abriendo...");
+      const d = await decryptBlob(obj, p); BLOB = obj; await idbSet("paquete", obj); $("#ovLock").classList.remove("on"); setData(d); toast("Datos importados");
+    } else toast("El archivo no es un paquete valido");
+  } catch (er) { toast("Clave incorrecta o archivo danado"); }
+});
+$("#dExportar").onclick = () => {
+  if (!BLOB) return toast("No hay datos para exportar");
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(BLOB)], { type: "application/json" }));
+  a.download = "paquete_precios.enc"; a.click();
+};
+$("#dBorrar").onclick = async () => {
+  if (!confirm("Borrar los datos guardados en esta tableta? Tendras que importar el paquete otra vez.")) return;
+  await idbDel("paquete"); BLOB = null; DATA = null; IDX = new Map(); SRCH = []; renderAll(); toast("Datos borrados");
+};
+
+/* ====================== bloqueo ====================== */
+function bloquear() {
+  if (!BLOB) return;
+  DATA = null; IDX = new Map(); SRCH = []; $("#lkClave").value = ""; $("#lkErr").style.display = "none"; $("#ovLock").classList.add("on");
+  $("#pRes").style.display = "none"; renderAll();
+}
+$("#chipBloquear").onclick = bloquear;
+$("#lkOk").onclick = async () => {
+  const p = $("#lkClave").value; if (!p) return;
+  try { const d = await decryptBlob(BLOB, p); $("#ovLock").classList.remove("on"); setData(d); }
+  catch (e) { $("#lkErr").textContent = "Clave incorrecta."; $("#lkErr").style.display = "block"; }
+};
+$("#lkClave").addEventListener("keydown", e => { if (e.key === "Enter") $("#lkOk").click(); });
+let idleT; const IDLE_MS = 20 * 60 * 1000;
+function resetIdle() { clearTimeout(idleT); idleT = setTimeout(bloquear, IDLE_MS); }
+["pointerdown", "keydown"].forEach(ev => addEventListener(ev, resetIdle, { passive: true })); resetIdle();
+
+/* ====================== navegacion y arranque ====================== */
+function showTab(t) {
+  if ((t === "aut" || t === "proy") && esVend()) t = "precio";
+  $$("nav button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === t));
+  $$("main section").forEach(s => s.classList.toggle("on", s.id === "s-" + t));
+  if (t === "lista") renderLista(); if (t === "aut") renderAut(); if (t === "proy") renderProyecto(); if (t === "clientes") renderClientes(); if (t === "datos") renderDatos();
+  lsSet("tab", t);
+}
+$$("nav button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+function renderHeader() {
+  const c = clienteActual(), sel = $("#selCateg");
+  $("#chipCliente").textContent = c ? c[3] + " | " + c[4] : "Elegir cliente";
+  sel.value = CFG.categoria; sel.disabled = !!c; if (c) sel.value = ["AAA", "A", "B", "C"].includes(categoriaActiva()) ? categoriaActiva() : CFG.categoria;
+  document.body.classList.toggle("hide-costs", !!CFG.ocultar); $("#chipOcultar").textContent = CFG.ocultar ? "Mostrar costos" : "Ocultar costos";
+}
+$("#selCateg").onchange = e => { CFG.categoria = e.target.value; saveCfg(); renderAll(); };
+$("#chipOcultar").onclick = () => { CFG.ocultar = !CFG.ocultar; saveCfg(); renderHeader(); };
+function renderAll() {
+  renderHeader(); renderDatos(); renderPrecio(); renderLista(); renderAut(); renderProyecto(); renderClientes();
+}
+async function arrancar() {
+  renderAll(); showTab(lsGet("tab", "precio") === "datos" ? "precio" : lsGet("tab", "precio"));
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js").catch(() => {});
+  try { BLOB = await idbGet("paquete"); } catch (e) { BLOB = null; }
+  if (BLOB) $("#ovLock").classList.add("on"); else showTab("datos");
+}
+arrancar();
+</script>
+</body>
+</html>
