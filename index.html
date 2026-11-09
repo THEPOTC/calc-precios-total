@@ -214,8 +214,10 @@ body.vend .only-mgr{display:none !important}
   <div class="grid two">
     <div class="card">
       <h2>Datos del proyecto</h2>
+      <div class="row" style="margin-bottom:10px"><button class="btn sec" id="yDocBtn" type="button">Cargar OV o cotizacion de Zoho</button></div>
+      <div id="yDoc"></div>
       <div class="row">
-        <div><label for="yOv">Orden de Venta (OV)</label><input type="text" id="yOv" placeholder="OV-00000" maxlength="30" autocomplete="off"></div>
+        <div><label for="yOv" id="yOvLbl">Orden de Venta (OV)</label><input type="text" id="yOv" placeholder="OV-00000" maxlength="30" autocomplete="off"></div>
         <div><label for="yValidez">Validez hasta</label><input type="date" id="yValidez"></div>
       </div>
       <div style="margin-top:10px">
@@ -299,6 +301,20 @@ body.vend .only-mgr{display:none !important}
   <div class="row" style="align-items:center"><input type="search" id="pkQ" placeholder="Codigo o descripcion" autocomplete="off" style="flex:3 1 240px">
     <button class="btn sec" id="pkCerrar" type="button" style="flex:0 0 auto">Cerrar</button></div>
   <div class="list" id="pkRes" style="margin-top:10px"></div>
+</div></div>
+
+<div class="overlay" id="ovDoc"><div class="modal">
+  <div class="row" style="align-items:center"><h2 style="margin:0;flex:3 1 240px">Cargar OV o cotizacion de Zoho</h2>
+    <button class="btn sec" id="dcCerrar" type="button" style="flex:0 0 auto">Cerrar</button></div>
+  <div id="dcEstado" style="margin:10px 0"></div>
+  <div class="row"><button class="btn sec" id="dcArchivo" type="button">Cargar exportacion de Zoho (.xlsx)</button></div>
+  <input type="file" id="dcFile" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple hidden>
+  <div class="row" style="margin-top:10px">
+    <div style="flex:0 0 160px"><label for="dcTipo">Tipo</label><select class="f" id="dcTipo"><option value="OV">Orden de Venta</option><option value="COT">Cotizacion</option></select></div>
+    <div style="flex:3 1 220px"><label for="dcQ">Buscar (numero o cliente)</label><input type="search" id="dcQ" placeholder="Ej: 31917 o nombre del cliente" autocomplete="off"></div>
+  </div>
+  <div id="dcMsg"></div>
+  <div class="list" id="dcRes" style="margin-top:10px"></div>
 </div></div>
 
 <div class="overlay" id="ovPass"><div class="modal" style="max-width:460px">
@@ -407,7 +423,7 @@ let LINES = lsGet("lista", []);
 let AUT = Object.assign({ sku: "", cant: 1, precio: 0, consec: "", iva: false, fecha: "", validez: "", autoriza: "" }, lsGet("aut", {}));
 const saveCfg = () => lsSet("cfg", CFG), saveLines = () => lsSet("lista", LINES), saveAut = () => lsSet("aut", AUT);
 // Proyecto: lineas {sku, cant, util|null}; util null = usa la utilidad por defecto del proyecto.
-let PROY = Object.assign({ ov: "", validez: "", consec: "", autoriza: "", util: 0.15, lines: [], shared: null }, lsGet("proy", {}));
+let PROY = Object.assign({ ov: "", validez: "", consec: "", autoriza: "", util: 0.15, lines: [], shared: null, doc: null }, lsGet("proy", {}));
 if (!Array.isArray(PROY.lines)) PROY.lines = [];
 if (typeof PROY.util !== "number" || !isFinite(PROY.util)) PROY.util = 0.15;
 const saveProy = () => lsSet("proy", PROY);
@@ -877,11 +893,24 @@ const ceil2 = x => Math.ceil(parseFloat((x * 100).toPrecision(12))) / 100;
 const numEn = n => n == null || !isFinite(n) ? "" : rd(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fCorta = d => pad(d.getDate()) + "-" + pad(d.getMonth() + 1) + "-" + String(d.getFullYear()).slice(2);
 const fIsoCorta = s => { if (!s) return ""; const [y, m, d] = s.split("-"); return d + "-" + m + "-" + String(y).slice(2); };
+// Cliente del proyecto: el de la OV/cotizacion cargada (del paquete si se encuentra; si no, uno provisional con lo que dice Zoho)
+// o, sin documento cargado, el elegido en la pestana Clientes.
+function clienteProy() {
+  if (PROY.doc) {
+    const c = DATA && PROY.doc.cli ? DATA.clientes.find(x => x[2] === PROY.doc.cli) : null;
+    return c || ["", "", PROY.doc.cn || "", PROY.doc.cl || "", "", ""];
+  }
+  return clienteActual();
+}
+function catProy() {
+  const c = clienteProy(), k = c ? String(c[4] || "").trim().toUpperCase() : "";
+  return ["AAA", "A", "B", "C"].includes(k) ? k : CFG.categoria;
+}
 function lineaProy(L) {
   const it = getItem(L.sku); if (!it) return { it: null };
   const u = L.util != null && isFinite(L.util) ? L.util : PROY.util;
   const utilOk = typeof u === "number" && isFinite(u) && u >= 0 && u < 1, costoOk = it[2] != null && it[2] > 0;
-  const r = calcular(it, categoriaActiva(), "util", utilOk ? u : NaN);
+  const r = calcular(it, catProy(), "util", utilOk ? u : NaN);
   const precio = costoOk && utilOk && r.precio > 0 ? ceil2(r.precio) : null;
   const cant = L.cant > 0 ? L.cant : 0;
   const total = precio != null && cant > 0 ? rd(precio * cant) : null;
@@ -900,13 +929,13 @@ function problemasProy() {
   const p = [];
   if (!DATA) p.push("No hay datos cargados");
   if (!PROY.lines.length) p.push("Agrega al menos un articulo");
-  if (!clienteActual()) p.push("Elige el cliente en la pestana Clientes");
+  if (!clienteProy()) p.push("Elige el cliente en la pestana Clientes");
   if (!PROY.autoriza) p.push("Elige el gerente que autoriza");
   if (!PROY.validez) p.push("Falta la fecha de validez");
   else if (PROY.validez < isoDate(new Date())) p.push("La validez ya vencio (" + fIsoCorta(PROY.validez) + ")");
   PROY.lines.forEach((L, i) => {
     const x = lineaProy(L), n = "Linea " + (i + 1) + " (" + L.sku + "): ";
-    if (!x.it) { p.push(n + "no existe en los datos actuales"); return; }
+    if (!x.it) { p.push(L.sku ? n + "no existe en los datos actuales: quitala o corrige el SKU en Zoho" : "Linea " + (i + 1) + " (" + (L.nombre || "sin nombre") + "): no tiene SKU en Zoho: quitala y agregala con el SKU correcto"); return; }
     if (!x.costoOk) p.push(n + "sin costo, no se puede calcular el precio");
     else if (!x.utilOk) p.push(n + "utilidad fuera de rango (de 0% a menos de 100%)");
     if (!(x.cant > 0)) p.push(n + "falta la cantidad");
@@ -914,16 +943,25 @@ function problemasProy() {
   return p;
 }
 function avisosProy() {
-  const w = [], vistos = {};
+  const w = [], vistos = {}; let ncanc = 0;
   if (!PROY.ov.trim()) w.push("Sin numero de OV: la imagen saldra sin esa linea.");
+  const D = PROY.doc;
+  if (D) {
+    const c = clienteProy();
+    if (!D.cli) w.push("El cliente de Zoho (" + D.cl + ") no esta en el paquete de clientes: la imagen saldra sin concesionario, zona ni categorizacion. Los descuentos contra lista usan la categoria del encabezado (" + CFG.categoria + ").");
+    else if (D.porNombre) w.push("El codigo de Zoho (" + D.cn + ") no esta en el paquete: el cliente se identifico por nombre (" + c[3] + ", " + c[2] + "). Confirma que es el correcto.");
+    if (/void|cancel/i.test(D.est || "")) w.push("El documento esta en estado " + D.est + " en Zoho.");
+  }
   PROY.lines.forEach((L, i) => {
     const x = lineaProy(L), n = "Linea " + (i + 1) + " (" + L.sku + "): "; if (!x.it) return;
+    if (L.z && L.z.canc > 0) ncanc++;
     vistos[L.sku] = (vistos[L.sku] || 0) + 1;
     if (!x.it[7]) w.push(n + "articulo inactivo en Zoho.");
-    if (x.precio != null && x.pl == null) w.push(n + "sin precio de lista para la categoria " + categoriaActiva() + ".");
+    if (x.precio != null && x.pl == null) w.push(n + "sin precio de lista para la categoria " + catProy() + ".");
     if (x.precio != null && x.pl != null && x.precio > x.pl + 0.005) w.push(n + "el precio especial supera el precio de lista.");
   });
   Object.keys(vistos).forEach(k => { if (vistos[k] > 1) w.push("SKU repetido en el proyecto: " + k + " (" + vistos[k] + " lineas)."); });
+  if (ncanc) w.push(ncanc + " linea(s) con unidades canceladas en Zoho: se cargo la cantidad ORDENADA. Revisa la columna En Zoho.");
   if (PROY.lines.length > POR_PAGINA) w.push("Son " + PROY.lines.length + " lineas: se generaran " + Math.ceil(PROY.lines.length / POR_PAGINA) + " imagenes de hasta " + POR_PAGINA + " lineas.");
   return w;
 }
@@ -932,23 +970,29 @@ function pintarProy() {
   $("#yTotales").innerHTML = `<dl class="kv"><dt>Lineas completas</dt><dd>${t.n} de ${PROY.lines.length}</dd>
     <dt>Total del negocio (sin I.V.A.)</dt><dd class="big">${money(t.neg)}</dd>
     <dt>Costo total (interno)</dt><dd class="cost">${money(t.costo)}</dd><dt>Utilidad (interno)</dt><dd class="cost">${money(t.util)}</dd>
-    <dt>Margen del negocio (interno)</dt><dd class="cost">${t.margen == null ? "-" : pct(t.margen)}</dd></dl>
+    <dt>Margen del negocio (interno)</dt><dd class="cost">${t.margen == null ? "-" : pct(t.margen)}</dd>
+    ${PROY.doc ? `<dt>Subtotal en Zoho (referencia)</dt><dd>${money(PROY.doc.zsub)}</dd><dt>Autorizado menos Zoho</dt><dd>${PROY.doc.zsub == null || t.n !== PROY.lines.length ? "-" : money(rd(t.neg - PROY.doc.zsub))}</dd>` : ""}</dl>
     <p class="muted" style="margin:8px 0 0">El costo, la utilidad y el margen no aparecen en la imagen.</p>`;
   const shown = pr.slice(0, 6).map(x => `<div class="msg bad">${esc(x)}</div>`).join("") + (pr.length > 6 ? `<div class="msg bad">y ${pr.length - 6} problema(s) mas.</div>` : "");
   $("#yAvisos").innerHTML = shown + w.slice(0, 6).map(x => `<div class="msg warn">${esc(x)}</div>`).join("") + (w.length > 6 ? `<div class="msg warn">y ${w.length - 6} aviso(s) mas.</div>` : "");
   $("#yConteo").textContent = PROY.lines.length ? "(" + PROY.lines.length + " de " + MAX_PROY + ")" : "";
-  const c = clienteActual();
-  $("#yCliente").innerHTML = c ? `<div class="muted">Cliente: <strong style="color:var(--ink)">${esc(c[3])}</strong> (${esc(c[2])}) | ${esc(c[0])} | ${esc(c[1])} | Categoria ${esc(c[4])}</div>`
+  const c = clienteProy(), D = PROY.doc;
+  $("#yOvLbl").textContent = D && D.t === "COT" ? "Cotizacion (COT)" : "Orden de Venta (OV)";
+  $("#yDoc").innerHTML = D ? `<div class="msg ok" style="margin:0 0 10px"><strong>${esc(D.raw)}</strong> cargada de Zoho | ${esc(D.est || "sin estado")} | ${esc(D.f || "")}<br>
+    ${esc(D.cl)} (${esc(D.cn)}) | ${D.nl} linea(s) | Zoho: ${esc(D.vend || "sin vendedor")}<br><span class="muted">Las lineas se cargaron con precio ESPECIAL Minimo calculado desde el costo; el precio de Zoho es solo referencia.</span></div>` : "";
+  $("#yCliente").innerHTML = D ? `<div class="muted">Cliente de la ${D.t === "COT" ? "cotizacion" : "OV"}: <strong style="color:var(--ink)">${esc(c[3])}</strong> (${esc(c[2])})${D.cli ? " | " + esc(c[0]) + " | " + esc(c[1]) + " | Categoria " + esc(c[4]) : " | no esta en el paquete de clientes"}</div>`
+    : c ? `<div class="muted">Cliente: <strong style="color:var(--ink)">${esc(c[3])}</strong> (${esc(c[2])}) | ${esc(c[0])} | ${esc(c[1])} | Categoria ${esc(c[4])}</div>`
     : '<div class="msg bad" style="margin:0">Elige el cliente en la pestana Clientes.</div>';
 }
 function renderProyTabla() {
   const t = $("#yTabla");
   if (!PROY.lines.length) { t.innerHTML = '<tbody><tr><td class="l muted">Sin lineas. Usa Agregar articulo.</td></tr></tbody>'; return; }
   if (!DATA) { t.innerHTML = '<tbody><tr><td class="l muted">Sin datos cargados.</td></tr></tbody>'; return; }
+  const nz = PROY.doc ? 1 : 0;
   let h = `<thead><tr><th class="l">#</th><th class="l">Articulo</th><th class="cost">Costo</th><th>P. lista</th><th>Desc max</th>
-    <th class="cost">Util %</th><th>Precio ESPECIAL min</th><th>Cant</th><th>Total</th><th></th></tr></thead><tbody>`;
+    <th class="cost">Util %</th><th>Precio ESPECIAL min</th><th>Cant</th><th>Total</th>${nz ? "<th>En Zoho</th>" : ""}<th></th></tr></thead><tbody>`;
   PROY.lines.forEach((L, i) => {
-    if (!getItem(L.sku)) { h += `<tr data-i="${i}"><td class="l muted">${i + 1}</td><td class="l" colspan="8"><strong>${esc(L.sku)}</strong> <span class="over">no existe en los datos actuales</span></td><td><button class="btn bad" type="button" data-act="del">Quitar</button></td></tr>`; return; }
+    if (!getItem(L.sku)) { h += `<tr data-i="${i}"><td class="l muted">${i + 1}</td><td class="l" colspan="${8 + nz}"><strong>${esc(L.sku || "(sin SKU)")}</strong>${L.nombre ? " " + esc(L.nombre) : ""} <span class="over">${L.sku ? "no existe en los datos actuales" : "no tiene SKU en Zoho"}</span>${L.z ? " | Zoho: " + esc(money(L.z.total)) : ""}</td><td><button class="btn bad" type="button" data-act="del">Quitar</button></td></tr>`; return; }
     const it = getItem(L.sku);
     h += `<tr data-i="${i}"><td class="l muted">${i + 1}</td>
       <td class="name l"><strong>${esc(it[0])}</strong><small>${esc(it[1])}</small><small class="flag"></small></td>
@@ -956,7 +1000,7 @@ function renderProyTabla() {
       <td><input type="text" inputmode="decimal" data-f="util" class="cost" placeholder="${esc(pctIn(PROY.util))}" value="${L.util != null && isFinite(L.util) ? esc(pctIn(L.util)) : ""}"></td>
       <td class="c-precio" style="font-weight:700"></td>
       <td><input type="text" inputmode="decimal" data-f="cant" value="${esc(L.cant)}"></td>
-      <td class="c-total"></td>
+      <td class="c-total"></td>${nz ? '<td class="c-zoho"></td>' : ""}
       <td><button class="btn bad" type="button" data-act="del">Quitar</button></td></tr>`;
   });
   t.innerHTML = h + "</tbody>";
@@ -967,7 +1011,10 @@ function recalcFilaProy(i) {
   const x = lineaProy(L); if (!x.it || !$(".c-costo", tr)) return;
   $(".c-costo", tr).textContent = money(x.it[2]); $(".c-pl", tr).textContent = money(x.pl); $(".c-dmax", tr).textContent = pct(x.it[3]);
   $(".c-precio", tr).textContent = x.precio != null ? money(x.precio) : "-"; $(".c-total", tr).textContent = x.total != null ? money(x.total) : "-";
-  const f = [];
+  const f = [], z = L.z, zc = $(".c-zoho", tr);
+  if (zc) zc.innerHTML = z ? esc(money(z.total)) + '<small class="muted" style="display:block">unit. ' + esc(money(rd(z.precio * (1 - z.desc / 100)))) + (z.desc ? " (desc " + esc(rd(z.desc)) + "%)" : "") + '</small>' : "";
+  if (z && x.total != null) { const dif = rd(x.total - z.total); f.push('<span class="muted">Autorizado vs Zoho: ' + (dif === 0 ? "igual" : (dif > 0 ? "+" : "-") + money(Math.abs(dif))) + '</span>'); }
+  if (z && z.canc > 0) f.push('<span style="color:var(--warn)">Zoho: ' + esc(z.canc) + ' cancelada(s) de ' + esc(L.z.ord) + ' ordenadas</span>');
   if (!x.costoOk) f.push('<span class="over">Sin costo</span>'); else if (!x.utilOk) f.push('<span class="over">Utilidad fuera de rango</span>');
   if (!(x.cant > 0)) f.push('<span class="over">Falta cantidad</span>');
   if (!x.it[7]) f.push('<span style="color:var(--warn)">Inactivo en Zoho</span>');
@@ -1007,21 +1054,21 @@ $("#yTabla").addEventListener("click", e => {
 });
 $("#yNuevo").onclick = () => {
   if (PROY.lines.length && !confirm("Empezar un proyecto nuevo? Se borran las lineas actuales.")) return;
-  PROY.lines = []; PROY.ov = ""; PROY.validez = ""; PROY.consec = ""; PROY.shared = null;
+  PROY.lines = []; PROY.ov = ""; PROY.validez = ""; PROY.consec = ""; PROY.shared = null; PROY.doc = null;
   PROY.autoriza = CFG.gerentes.length === 1 ? CFG.gerentes[0] : ""; saveProy(); renderProyecto(); toast("Proyecto nuevo");
 };
 
 /* ---- imagen de autorizacion (paginas de hasta 40 lineas) ---- */
 function proyDatos() {
-  const c = clienteActual(), hoy = new Date();
+  const c = clienteProy(), hoy = new Date();
   const lineas = PROY.lines.map(lineaProy).filter(x => x.it).map(x => ({ cod: x.it[0], desc: x.it[1], precio: x.precio, cant: x.cant, total: x.total }));
-  const filas = [["Orden de Venta", PROY.ov.trim()], ["Concesionario", c[0]], ["Zona", c[1]], ["Codigo Cliente", c[2]], ["Cliente", c[3]],
-    ["Fecha", fCorta(hoy)], ["Consecutivo", PROY.consec], ["Autoriza", PROY.autoriza], ["Validez", fIsoCorta(PROY.validez), "rojo"], ["Categorizacion", categoriaActiva()]].filter(f => f[1]);
+  const filas = [[PROY.doc && PROY.doc.t === "COT" ? "Cotizacion" : "Orden de Venta", PROY.ov.trim()], ["Concesionario", c[0]], ["Zona", c[1]], ["Codigo Cliente", c[2]], ["Cliente", c[3]],
+    ["Fecha", fCorta(hoy)], ["Consecutivo", PROY.consec], ["Autoriza", PROY.autoriza], ["Validez", fIsoCorta(PROY.validez), "rojo"], ["Categorizacion", c[4] ? catProy() : ""]].filter(f => f[1]);
   return { filas, lineas, total: rd(lineas.reduce((a, l) => a + l.total, 0)) };
 }
 function hashProy() {
-  const d = proyDatos(), c = clienteActual();
-  return JSON.stringify([c[2], PROY.ov.trim(), PROY.validez, PROY.autoriza, d.lineas.map(l => [l.cod, l.cant, l.precio])]);
+  const d = proyDatos(), c = clienteProy();
+  return JSON.stringify([c[2], PROY.doc ? PROY.doc.t : "", PROY.ov.trim(), PROY.validez, PROY.autoriza, d.lineas.map(l => [l.cod, l.cant, l.precio])]);
 }
 // Si ya se compartio una version con este consecutivo y el contenido cambio, se genera un consecutivo nuevo:
 // dos imagenes con el mismo consecutivo nunca deben mostrar totales distintos.
@@ -1112,6 +1159,169 @@ $("#yCompartir").onclick = async () => {
   registrar(); toast(files.length > 1 ? files.length + " imagenes descargadas" : "Imagen descargada");
 };
 
+
+/* ====================== OV Y COTIZACIONES DE ZOHO ====================== */
+// Se lee la exportacion .xlsx de Zoho directamente en la tableta (sin librerias): un .xlsx es un zip con XML.
+// El cache de documentos se guarda CIFRADO con la misma clave del paquete; nunca queda en claro en la tableta.
+let DOCS = null, PASS = "";
+async function sealDocs() { if (PASS && DOCS) await idbSet("docs", await encryptObj(DOCS, PASS)); }
+async function restaurarDocs() {
+  DOCS = null;
+  try { const b = await idbGet("docs"); if (b && PASS) DOCS = await decryptBlob(b, PASS); }
+  catch (e) { DOCS = null; try { await idbDel("docs"); } catch (e2) {} }
+}
+async function zipIndice(buf) {
+  const u = new Uint8Array(buf), dv = new DataView(buf); let e = -1;
+  for (let i = u.length - 22; i >= Math.max(0, u.length - 70000); i--) if (dv.getUint32(i, true) === 0x06054b50) { e = i; break; }
+  if (e < 0) throw new Error("No es un archivo .xlsx valido");
+  const n = dv.getUint16(e + 10, true); let p = dv.getUint32(e + 16, true); const out = {};
+  for (let k = 0; k < n; k++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) throw new Error("Archivo .xlsx danado");
+    const nl = dv.getUint16(p + 28, true), el = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true);
+    out[new TextDecoder().decode(u.subarray(p + 46, p + 46 + nl))] = { meth: dv.getUint16(p + 10, true), csz: dv.getUint32(p + 20, true), off: dv.getUint32(p + 42, true) };
+    p += 46 + nl + el + cl;
+  }
+  return out;
+}
+async function zipTexto(buf, ents, name) {
+  const e = ents[name]; if (!e) return null; const dv = new DataView(buf), u = new Uint8Array(buf);
+  const s = e.off + 30 + dv.getUint16(e.off + 26, true) + dv.getUint16(e.off + 28, true), raw = u.subarray(s, s + e.csz);
+  let bytes = raw;
+  if (e.meth === 8) {
+    if (typeof DecompressionStream === "undefined") throw new Error("Este navegador no puede leer .xlsx (falta DecompressionStream). Actualiza Chrome.");
+    bytes = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
+  } else if (e.meth !== 0) throw new Error("Compresion de .xlsx no soportada");
+  return new TextDecoder().decode(bytes);
+}
+const xmlDec = t => t.indexOf("&") < 0 ? t : t.replace(/&(#x[0-9a-fA-F]+|#\d+|lt|gt|amp|quot|apos);/g, (m, g) =>
+  g[0] === "#" ? String.fromCodePoint(g[1] === "x" ? parseInt(g.slice(2), 16) : +g.slice(1)) : { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" }[g]);
+const colIdx = ref => { let n = 0; for (const ch of ref) n = n * 26 + ch.charCodeAt(0) - 64; return n - 1; };
+function parseHoja(xml, ss) {
+  const rows = [], reRow = /<row\b[^>]*?(?:\/>|>([\s\S]*?)<\/row>)/g; let m;
+  while ((m = reRow.exec(xml))) {
+    const r = [], body = m[1] || "", reC = /<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g; let c;
+    while ((c = reC.exec(body))) {
+      const ref = / r="([A-Z]+)\d+"/.exec(c[1]); if (!ref) continue; const t = / t="(\w+)"/.exec(c[1]), inner = c[2] || ""; let v;
+      if (t && t[1] === "inlineStr") { let tt = ""; inner.replace(/<t\b[^>]*>([\s\S]*?)<\/t>/g, (_, x) => { tt += x; return ""; }); v = xmlDec(tt); }
+      else { const vv = /<v>([\s\S]*?)<\/v>/.exec(inner); if (!vv) continue; v = t && t[1] === "s" ? ss[+vv[1]] : t && t[1] === "str" ? xmlDec(vv[1]) : t && t[1] === "b" ? vv[1] : Number(vv[1]); }
+      r[colIdx(ref[1])] = v;
+    }
+    rows.push(r);
+  }
+  return rows;
+}
+async function leerXlsx(file) {
+  const buf = await file.arrayBuffer(), ents = await zipIndice(buf);
+  let ss = []; const sx = await zipTexto(buf, ents, "xl/sharedStrings.xml");
+  if (sx) sx.replace(/<si\b[^>]*>([\s\S]*?)<\/si>/g, (_, x) => { let t = ""; x.replace(/<t\b[^>]*>([\s\S]*?)<\/t>/g, (__, y) => { t += y; return ""; }); ss.push(xmlDec(t)); return ""; });
+  // primera hoja segun el libro; si no se puede resolver, sheet1.xml
+  let path = "xl/worksheets/sheet1.xml";
+  try {
+    const wb = await zipTexto(buf, ents, "xl/workbook.xml"), rel = await zipTexto(buf, ents, "xl/_rels/workbook.xml.rels");
+    const rid = /<sheet\b[^>]*r:id="([^"]+)"/.exec(wb)[1], tg = new RegExp('<Relationship\\b[^>]*Id="' + rid + '"[^>]*Target="([^"]+)"').exec(rel) || new RegExp('<Relationship\\b[^>]*Target="([^"]+)"[^>]*Id="' + rid + '"').exec(rel);
+    if (tg) path = tg[1].replace(/^\//, "").replace(/^(?!xl\/)/, "xl/");
+  } catch (e) {}
+  const xml = await zipTexto(buf, ents, path); if (!xml) throw new Error("No encontre la hoja de datos en el .xlsx");
+  return parseHoja(xml, ss);
+}
+const serFecha = n => typeof n === "number" && n > 20000 ? new Date(Date.UTC(1899, 11, 30) + Math.round(n * 864e5)).toISOString().slice(0, 10) : "";
+// Misma regla de la macro NormalizarNumeroDoc: sin ceros a la izquierda tras el prefijo (COT-03883 = COT-003883).
+const normDoc = t => { const m = /^\s*([A-Za-z]+)\s*-?\s*0*(\d+)\s*$/.exec(String(t || "")); return m ? m[1].toUpperCase() + "-" + m[2] : String(t || "").trim().toUpperCase(); };
+const numZ = v => { if (v == null || v === "") return 0; const n = typeof v === "number" ? v : parseFloat(String(v).replace("%", "").replace(/,/g, "")); return isFinite(n) ? n : 0; };
+function docsDeHoja(rows) {
+  if (!rows.length) throw new Error("El archivo esta vacio");
+  const H = []; rows[0].forEach((h, i) => { H[i] = norm(h).trim(); });
+  const ix = n => H.indexOf(norm(n));
+  let t, cols;
+  if (ix("SalesOrder Number") >= 0) { t = "OV"; cols = { num: "SalesOrder Number", fec: "Order Date", est: "Status", cant: "QuantityOrdered", canc: "QuantityCancelled" }; }
+  else if (ix("Número de Estimación") >= 0) { t = "COT"; cols = { num: "Número de Estimación", fec: "Fecha del Estimación", est: "Estado del Estimación", cant: "Quantity", canc: null }; }
+  else throw new Error("No reconozco el archivo: no es una exportacion de Ordenes de Venta ni de Cotizaciones de Zoho");
+  const need = { num: cols.num, fec: cols.fec, est: cols.est, cant: cols.cant, cn: "Customer Number", cl: "Customer Name", mon: "Currency Code", sku: "SKU", nom: "Item Name", pr: "Item Price", ds: "Discount", tot: "Item Total", sub: "SubTotal", vend: "Sales person" };
+  const I = {}, falta = [];
+  Object.keys(need).forEach(k => { I[k] = ix(need[k]); if (I[k] < 0) falta.push(need[k]); });
+  I.canc = cols.canc ? ix(cols.canc) : -1;
+  if (falta.length) throw new Error("Faltan columnas en el archivo: " + falta.join(", "));
+  const docs = {}; let nl = 0;
+  for (let r = 1; r < rows.length; r++) {
+    const R = rows[r]; if (!R) continue; const raw = String(R[I.num] == null ? "" : R[I.num]).trim(); if (!raw) continue;
+    const k = normDoc(raw); let D = docs[k];
+    if (!D) D = docs[k] = { raw, f: serFecha(R[I.fec]), est: String(R[I.est] || ""), cn: String(R[I.cn] == null ? "" : R[I.cn]).trim(), cl: String(R[I.cl] || "").trim(), mon: String(R[I.mon] || "").trim().toUpperCase(), sub: R[I.sub] === "" || R[I.sub] == null ? null : numZ(R[I.sub]), vend: String(R[I.vend] || "").trim(), L: [] };
+    D.L.push([String(R[I.sku] == null ? "" : R[I.sku]).trim(), String(R[I.nom] || "").trim(), numZ(R[I.cant]), I.canc >= 0 ? numZ(R[I.canc]) : 0, numZ(R[I.pr]), numZ(R[I.ds]), numZ(R[I.tot])]); nl++;
+  }
+  return { t, docs, n: Object.keys(docs).length, nl };
+}
+async function cargarExportacion(file) {
+  const r = docsDeHoja(await leerXlsx(file));
+  DOCS = DOCS || {}; DOCS[r.t] = { fecha: new Date().toISOString(), archivo: file.name, n: r.n, nl: r.nl, docs: r.docs };
+  await sealDocs(); return r;
+}
+function estadoDocs() {
+  const f = t => { const x = DOCS && DOCS[t]; if (!x) return `<span class="tag warn">sin cargar</span>`;
+    const d = new Date(x.fecha), a = Math.floor((Date.now() - d.getTime()) / 864e5);
+    return `<span class="tag ${a > 3 ? "warn" : "ok"}">${x.n} documentos</span> <span class="muted">cargado ${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}${a > 0 ? " (hace " + a + " dia(s))" : ""} | ${esc(x.archivo)}</span>`; };
+  $("#dcEstado").innerHTML = `<div>Ordenes de Venta: ${f("OV")}</div><div style="margin-top:4px">Cotizaciones: ${f("COT")}</div>
+    <p class="muted" style="margin:8px 0 0">Carga la exportacion de Zoho (Excel) de cada tipo. Una exportacion nueva reemplaza la anterior de ese tipo. Los documentos se guardan cifrados en esta tableta.</p>`;
+}
+function buscarDocs(t, q) {
+  const X = DOCS && DOCS[t]; if (!X) return [];
+  const toks = norm(q).trim().split(/\s+/).filter(Boolean), out = [];
+  for (const k in X.docs) {
+    const D = X.docs[k]; if (toks.length) { const h = norm(k + " " + D.raw + " " + D.cl + " " + D.cn + " " + D.est); if (!toks.every(w => h.indexOf(w) >= 0)) continue; }
+    out.push([k, D]);
+  }
+  out.sort((a, b) => (b[1].f || "").localeCompare(a[1].f || "") || (a[0] < b[0] ? 1 : -1));
+  return out;
+}
+function pintarBusquedaDocs() {
+  const t = $("#dcTipo").value, r = buscarDocs(t, $("#dcQ").value);
+  if (!DOCS || !DOCS[t]) { $("#dcRes").innerHTML = '<div class="muted" style="padding:12px">Aun no hay ' + (t === "OV" ? "ordenes de venta" : "cotizaciones") + ' cargadas. Usa el boton de arriba.</div>'; return; }
+  $("#dcRes").innerHTML = r.slice(0, 60).map(([k, D]) => `<button type="button" data-k="${esc(k)}"><strong>${esc(D.raw)}</strong>
+    <span class="tag ${D.mon && D.mon !== "CRC" ? "bad" : "ok"}">${esc(D.mon || "CRC")}</span> <span class="tag warn">${esc(D.est || "-")}</span>
+    <small>${esc(D.cl)} | ${esc(D.f || "")} | ${D.L.length} linea(s) | ${esc(money(D.sub))}</small></button>`).join("") +
+    (r.length > 60 ? `<div class="muted" style="padding:10px">${r.length} resultados, se muestran 60. Afina la busqueda.</div>` : "") + (r.length ? "" : '<div class="muted" style="padding:12px">Sin resultados.</div>');
+}
+function abrirDocs() {
+  if (!DATA) return toast("Abre los datos primero");
+  $("#dcMsg").innerHTML = ""; estadoDocs(); pintarBusquedaDocs(); $("#ovDoc").classList.add("on"); setTimeout(() => $("#dcQ").focus(), 50);
+}
+const nomNorm = x => norm(x).replace(/[^a-z0-9]+/g, " ").trim();
+function buscarClienteDoc(D) {
+  let c = D.cn ? DATA.clientes.find(x => x[2] === D.cn) : null; if (c) return { cod: c[2], porNombre: false };
+  const n = nomNorm(D.cl); if (!n) return { cod: "", porNombre: false };
+  const m = DATA.clientes.filter(x => nomNorm(x[3]) === n);
+  return m.length === 1 ? { cod: m[0][2], porNombre: true } : { cod: "", porNombre: false };
+}
+function cargarDoc(t, k) {
+  const D = DOCS && DOCS[t] && DOCS[t].docs[k]; if (!D) return;
+  const msg = (cls, m) => { $("#dcMsg").innerHTML = `<div class="msg ${cls}">${esc(m)}</div>`; };
+  if (D.mon && D.mon !== "CRC") return msg("bad", D.raw + " esta en " + D.mon + ". Esta version solo carga documentos en colones: el calculo de precios es en colones.");
+  if (!D.L.length) return msg("bad", D.raw + " no trae lineas.");
+  if (D.L.length > MAX_PROY) return msg("bad", D.raw + " tiene " + D.L.length + " lineas y el maximo es " + MAX_PROY + ".");
+  if (PROY.lines.length && !confirm("Cargar " + D.raw + "? Se reemplazan las lineas actuales del proyecto.")) return;
+  const c = buscarClienteDoc(D), tipo = t;
+  PROY.doc = { t: tipo, num: k, raw: D.raw, cn: D.cn, cl: D.cl, cli: c.cod, porNombre: c.porNombre, est: D.est, f: D.f, zsub: D.sub, vend: D.vend, nl: D.L.length };
+  PROY.lines = D.L.map(l => ({ sku: l[0], nombre: l[1], cant: l[2] > 0 ? l[2] : 0, util: null, z: { ord: l[2], canc: l[3], precio: l[4], desc: l[5], total: l[6] } }));
+  PROY.ov = D.raw; PROY.consec = ""; PROY.shared = null; saveProy();
+  $("#ovDoc").classList.remove("on"); renderProyecto(); toast(D.raw + " cargada");
+}
+$("#yDocBtn").onclick = abrirDocs;
+$("#dcCerrar").onclick = () => $("#ovDoc").classList.remove("on");
+$("#dcArchivo").onclick = () => $("#dcFile").click();
+$("#dcTipo").onchange = pintarBusquedaDocs;
+$("#dcQ").addEventListener("input", pintarBusquedaDocs);
+$("#dcRes").addEventListener("click", e => { const b = e.target.closest("button[data-k]"); if (b) cargarDoc($("#dcTipo").value, b.dataset.k); });
+$("#dcFile").addEventListener("change", async e => {
+  const fs = [...e.target.files]; e.target.value = ""; if (!fs.length) return;
+  if (!PASS) return $("#dcMsg").innerHTML = '<div class="msg bad">Bloquea y vuelve a abrir la app con tu clave para poder guardar los documentos cifrados.</div>';
+  const res = [];
+  for (const f of fs) {
+    $("#dcMsg").innerHTML = `<div class="msg warn">Leyendo ${esc(f.name)}...</div>`; await new Promise(r => setTimeout(r, 30));
+    try { const r = await cargarExportacion(f); res.push(`<div class="msg ok">${esc(f.name)}: ${r.n} ${r.t === "OV" ? "ordenes de venta" : "cotizaciones"} (${r.nl} lineas).</div>`); if (fs.length === 1) $("#dcTipo").value = r.t; }
+    catch (er) { res.push(`<div class="msg bad">${esc(f.name)}: ${esc(er.message || "no se pudo leer")}</div>`); }
+  }
+  $("#dcMsg").innerHTML = res.join(""); estadoDocs(); pintarBusquedaDocs();
+});
+
 /* ====================== CLIENTES ====================== */
 function renderClientes() {
   if (!DATA) { $("#cLista").innerHTML = ""; $("#cConteo").textContent = ""; return; }
@@ -1168,11 +1378,11 @@ $("#dFile").addEventListener("change", async e => {
     if (obj && Array.isArray(obj.items) && Array.isArray(obj.clientes)) {
       const p = await askPass({ titulo: "Proteger los datos", texto: "Crea una clave para esta tableta. Se pedira cada vez que abras la app. Elimina despues el archivo .json que importaste.", confirmar: true });
       if (!p) return; toast("Cifrando...");
-      BLOB = await encryptObj(obj, p); await idbSet("paquete", BLOB); $("#ovLock").classList.remove("on"); setData(obj); toast("Datos guardados y protegidos");
+      BLOB = await encryptObj(obj, p); await idbSet("paquete", BLOB); PASS = p; await restaurarDocs(); $("#ovLock").classList.remove("on"); setData(obj); toast("Datos guardados y protegidos");
     } else if (obj && obj.salt && obj.data) {
       const p = await askPass({ titulo: "Abrir paquete cifrado", texto: "Escribe la clave con la que se cifro el paquete.", confirmar: false });
       if (!p) return; toast("Abriendo...");
-      const d = await decryptBlob(obj, p); BLOB = obj; await idbSet("paquete", obj); $("#ovLock").classList.remove("on"); setData(d); toast("Datos importados");
+      const d = await decryptBlob(obj, p); BLOB = obj; await idbSet("paquete", obj); PASS = p; await restaurarDocs(); $("#ovLock").classList.remove("on"); setData(d); toast("Datos importados");
     } else toast("El archivo no es un paquete valido");
   } catch (er) { toast("Clave incorrecta o archivo danado"); }
 });
@@ -1183,19 +1393,19 @@ $("#dExportar").onclick = () => {
 };
 $("#dBorrar").onclick = async () => {
   if (!confirm("Borrar los datos guardados en esta tableta? Tendras que importar el paquete otra vez.")) return;
-  await idbDel("paquete"); BLOB = null; DATA = null; IDX = new Map(); SRCH = []; renderAll(); toast("Datos borrados");
+  await idbDel("paquete"); try { await idbDel("docs"); } catch (e) {} BLOB = null; DATA = null; DOCS = null; PASS = ""; IDX = new Map(); SRCH = []; renderAll(); toast("Datos borrados");
 };
 
 /* ====================== bloqueo ====================== */
 function bloquear() {
   if (!BLOB) return;
-  DATA = null; IDX = new Map(); SRCH = []; $("#lkClave").value = ""; $("#lkErr").style.display = "none"; $("#ovLock").classList.add("on");
+  DATA = null; DOCS = null; PASS = ""; $("#ovDoc").classList.remove("on"); IDX = new Map(); SRCH = []; $("#lkClave").value = ""; $("#lkErr").style.display = "none"; $("#ovLock").classList.add("on");
   $("#pRes").style.display = "none"; renderAll();
 }
 $("#chipBloquear").onclick = bloquear;
 $("#lkOk").onclick = async () => {
   const p = $("#lkClave").value; if (!p) return;
-  try { const d = await decryptBlob(BLOB, p); $("#ovLock").classList.remove("on"); setData(d); }
+  try { const d = await decryptBlob(BLOB, p); PASS = p; await restaurarDocs(); $("#ovLock").classList.remove("on"); setData(d); }
   catch (e) { $("#lkErr").textContent = "Clave incorrecta."; $("#lkErr").style.display = "block"; }
 };
 $("#lkClave").addEventListener("keydown", e => { if (e.key === "Enter") $("#lkOk").click(); });
