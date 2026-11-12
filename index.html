@@ -229,7 +229,8 @@ body.vend .only-mgr{display:none !important}
         </div>
       </div>
       <div class="row" style="margin-top:10px">
-        <div style="flex:0 1 220px"><label for="yUtil">Utilidad por defecto %</label><input type="text" id="yUtil" inputmode="decimal" class="cost"></div>
+        <div style="flex:2 1 240px"><label for="yBase">Precio inicial de cada linea</label><select class="f" id="yBase"><option value="desc">Descuento maximo de la lista</option><option value="util">Utilidad por defecto</option></select></div>
+        <div style="flex:0 1 180px" id="yUtilBox"><label for="yUtil">Utilidad por defecto %</label><input type="text" id="yUtil" inputmode="decimal" class="cost"></div>
       </div>
       <div class="row" style="margin-top:10px">
         <div style="flex:2 1 230px"><label for="yConsec">Consecutivo</label><input type="text" id="yConsec" readonly></div>
@@ -244,6 +245,10 @@ body.vend .only-mgr{display:none !important}
       <div class="row" style="margin-top:12px">
         <button class="btn sec" id="yVista" type="button">Vista previa</button>
         <button class="btn" id="yCompartir" type="button">Compartir imagen</button>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn sec" id="yExcelInt" type="button">Excel interno (con costos)</button>
+        <button class="btn sec" id="yExcelCli" type="button">Excel cliente</button>
       </div>
       <div class="row" style="margin-top:10px"><button class="btn bad" id="yNuevo" type="button">Nuevo proyecto</button></div>
     </div>
@@ -423,7 +428,18 @@ let LINES = lsGet("lista", []);
 let AUT = Object.assign({ sku: "", cant: 1, precio: 0, consec: "", iva: false, fecha: "", validez: "", autoriza: "" }, lsGet("aut", {}));
 const saveCfg = () => lsSet("cfg", CFG), saveLines = () => lsSet("lista", LINES), saveAut = () => lsSet("aut", AUT);
 // Proyecto: lineas {sku, cant, util|null}; util null = usa la utilidad por defecto del proyecto.
-let PROY = Object.assign({ ov: "", validez: "", consec: "", autoriza: "", util: 0.15, lines: [], shared: null, doc: null }, lsGet("proy", {}));
+let PROY = Object.assign({ ov: "", validez: "", consec: "", autoriza: "", util: 0.15, lines: [], shared: null, doc: null, base: "desc" }, lsGet("proy", {}));
+// v1.7: cada linea guarda UN metodo (modo: "desc" | "util" | "precio" y val). Sin modo usa la base del proyecto.
+// Proyectos guardados antes de la v1.7 conservan su base anterior (utilidad por defecto).
+if (!(lsGet("proy", {}).base)) PROY.base = (PROY.lines || []).length ? "util" : "desc";
+PROY.lines.forEach(L => {
+  if (L.modo === undefined) {
+    if (L.precio != null && L.precio > 0) { L.modo = "precio"; L.val = L.precio; }
+    else if (L.util != null && isFinite(L.util)) { L.modo = "util"; L.val = L.util; }
+    else { L.modo = null; L.val = null; }
+    delete L.precio; delete L.util;
+  }
+});
 if (!Array.isArray(PROY.lines)) PROY.lines = [];
 if (typeof PROY.util !== "number" || !isFinite(PROY.util)) PROY.util = 0.15;
 const saveProy = () => lsSet("proy", PROY);
@@ -908,17 +924,29 @@ function catProy() {
 }
 function lineaProy(L) {
   const it = getItem(L.sku); if (!it) return { it: null };
-  const u = L.util != null && isFinite(L.util) ? L.util : PROY.util;
-  const utilOk = typeof u === "number" && isFinite(u) && u >= 0 && u < 1, costoOk = it[2] != null && it[2] > 0;
-  const r = calcular(it, catProy(), "util", utilOk ? u : NaN);
-  const precio = costoOk && utilOk && r.precio > 0 ? ceil2(r.precio) : null;
+  const cat = catProy(), costoOk = it[2] != null && it[2] > 0, pl = precioLista(it, cat);
+  const modo = L.modo || PROY.base || "desc";
+  const v = L.modo ? L.val : (modo === "util" ? PROY.util : it[3]);
+  let precio = null, motivo = "";
+  if (modo === "precio") { if (v > 0) precio = rd(v); else motivo = "falta el precio"; }
+  else if (modo === "desc") {
+    if (pl == null) motivo = "sin precio de lista para la categoria " + cat + ": usa utilidad o precio directo";
+    else if (typeof v !== "number" || !isFinite(v) || v >= 1) motivo = "descuento fuera de rango (menor a 100%)";
+    else { precio = rd(pl * (1 - v)); if (!(precio > 0)) { precio = null; motivo = "descuento fuera de rango"; } }
+  } else {
+    if (!costoOk) motivo = "sin costo: usa descuento o precio directo";
+    else if (typeof v !== "number" || !isFinite(v) || v < 0 || v >= 1) motivo = "utilidad fuera de rango (de 0% a menos de 100%)";
+    else precio = ceil2(it[2] / (1 - v));
+  }
   const cant = L.cant > 0 ? L.cant : 0;
   const total = precio != null && cant > 0 ? rd(precio * cant) : null;
   const costoTot = costoOk && cant > 0 ? rd(it[2] * cant) : null;
-  const pl = r.pl, pMax = pl != null ? pl * (1 - it[3]) : null;
-  return { it, u, utilOk, costoOk, precio, cant, total, costoTot, pl, pMax,
-    descReal: precio != null && pl ? (pl - precio) / pl : null, utilReal: precio != null ? (precio - it[2]) / precio : null };
+  const pMax = pl != null ? pl * (1 - it[3]) : null;
+  const excede = precio != null && pMax != null && precio < pMax - 0.0051;   // el redondeo al centimo no cuenta como exceso
+  return { it, modo, excede, man: modo === "precio", precio, motivo, cant, total, costoTot, costoOk, pl, pMax,
+    descReal: precio != null && pl ? (pl - precio) / pl : null, utilReal: precio != null && costoOk ? (precio - it[2]) / precio : null };
 }
+const it_costo = x => x.it[2];
 function totalesProy() {
   let neg = 0, costo = 0, n = 0;
   PROY.lines.forEach(L => { const x = lineaProy(L); if (x.total == null) return; neg += x.total; costo += x.costoTot || 0; n++; });
@@ -936,8 +964,8 @@ function problemasProy() {
   PROY.lines.forEach((L, i) => {
     const x = lineaProy(L), n = "Linea " + (i + 1) + " (" + L.sku + "): ";
     if (!x.it) { p.push(L.sku ? n + "no existe en los datos actuales: quitala o corrige el SKU en Zoho" : "Linea " + (i + 1) + " (" + (L.nombre || "sin nombre") + "): no tiene SKU en Zoho: quitala y agregala con el SKU correcto"); return; }
-    if (!x.costoOk) p.push(n + "sin costo, no se puede calcular el precio");
-    else if (!x.utilOk) p.push(n + "utilidad fuera de rango (de 0% a menos de 100%)");
+    if (!x.costoOk) p.push(n + "sin costo: no se puede calcular la utilidad ni el margen");
+    else if (x.precio == null) p.push(n + x.motivo);
     if (!(x.cant > 0)) p.push(n + "falta la cantidad");
   });
   return p;
@@ -959,10 +987,12 @@ function avisosProy() {
     if (!x.it[7]) w.push(n + "articulo inactivo en Zoho.");
     if (x.precio != null && x.pl == null) w.push(n + "sin precio de lista para la categoria " + catProy() + ".");
     if (x.precio != null && x.pl != null && x.precio > x.pl + 0.005) w.push(n + "el precio especial supera el precio de lista.");
+    if (x.costoOk && x.precio != null && x.precio < it_costo(x) - 0.005) w.push(n + "PRECIO BAJO EL COSTO: utilidad " + pct(x.utilReal) + ".");
+    if (x.excede) w.push(n + "descuento " + pct(x.descReal) + " supera el maximo de lista (" + pct(x.it[3]) + ").");
   });
   Object.keys(vistos).forEach(k => { if (vistos[k] > 1) w.push("SKU repetido en el proyecto: " + k + " (" + vistos[k] + " lineas)."); });
-  if (ncanc) w.push(ncanc + " linea(s) con unidades canceladas en Zoho: se cargo la cantidad ORDENADA. Revisa la columna En Zoho.");
-  if (PROY.lines.length > POR_PAGINA) w.push("Son " + PROY.lines.length + " lineas: se generaran " + Math.ceil(PROY.lines.length / POR_PAGINA) + " imagenes de hasta " + POR_PAGINA + " lineas.");
+  if (ncanc) w.unshift(ncanc + " linea(s) con unidades canceladas en Zoho: se cargo la cantidad ORDENADA. Se indica en cada linea.");
+  if (PROY.lines.length > POR_PAGINA) w.unshift("Son " + PROY.lines.length + " lineas: se generaran " + Math.ceil(PROY.lines.length / POR_PAGINA) + " imagenes de hasta " + POR_PAGINA + " lineas.");
   return w;
 }
 function pintarProy() {
@@ -970,8 +1000,7 @@ function pintarProy() {
   $("#yTotales").innerHTML = `<dl class="kv"><dt>Lineas completas</dt><dd>${t.n} de ${PROY.lines.length}</dd>
     <dt>Total del negocio (sin I.V.A.)</dt><dd class="big">${money(t.neg)}</dd>
     <dt>Costo total (interno)</dt><dd class="cost">${money(t.costo)}</dd><dt>Utilidad (interno)</dt><dd class="cost">${money(t.util)}</dd>
-    <dt>Margen del negocio (interno)</dt><dd class="cost">${t.margen == null ? "-" : pct(t.margen)}</dd>
-    ${PROY.doc ? `<dt>Subtotal en Zoho (referencia)</dt><dd>${money(PROY.doc.zsub)}</dd><dt>Autorizado menos Zoho</dt><dd>${PROY.doc.zsub == null || t.n !== PROY.lines.length ? "-" : money(rd(t.neg - PROY.doc.zsub))}</dd>` : ""}</dl>
+    <dt>Margen del negocio (interno)</dt><dd class="cost">${t.margen == null ? "-" : pct(t.margen)}</dd></dl>
     <p class="muted" style="margin:8px 0 0">El costo, la utilidad y el margen no aparecen en la imagen.</p>`;
   const shown = pr.slice(0, 6).map(x => `<div class="msg bad">${esc(x)}</div>`).join("") + (pr.length > 6 ? `<div class="msg bad">y ${pr.length - 6} problema(s) mas.</div>` : "");
   $("#yAvisos").innerHTML = shown + w.slice(0, 6).map(x => `<div class="msg warn">${esc(x)}</div>`).join("") + (w.length > 6 ? `<div class="msg warn">y ${w.length - 6} aviso(s) mas.</div>` : "");
@@ -979,7 +1008,7 @@ function pintarProy() {
   const c = clienteProy(), D = PROY.doc;
   $("#yOvLbl").textContent = D && D.t === "COT" ? "Cotizacion (COT)" : "Orden de Venta (OV)";
   $("#yDoc").innerHTML = D ? `<div class="msg ok" style="margin:0 0 10px"><strong>${esc(D.raw)}</strong> cargada de Zoho | ${esc(D.est || "sin estado")} | ${esc(D.f || "")}<br>
-    ${esc(D.cl)} (${esc(D.cn)}) | ${D.nl} linea(s) | Zoho: ${esc(D.vend || "sin vendedor")}<br><span class="muted">Las lineas se cargaron con precio ESPECIAL Minimo calculado desde el costo; el precio de Zoho es solo referencia.</span></div>` : "";
+    ${esc(D.cl)} (${esc(D.cn)}) | ${D.nl} linea(s) | Zoho: ${esc(D.vend || "sin vendedor")}<br><span class="muted">Las lineas se cargaron con la base del proyecto (descuento maximo o utilidad por defecto), no con los precios de Zoho.</span></div>` : "";
   $("#yCliente").innerHTML = D ? `<div class="muted">Cliente de la ${D.t === "COT" ? "cotizacion" : "OV"}: <strong style="color:var(--ink)">${esc(c[3])}</strong> (${esc(c[2])})${D.cli ? " | " + esc(c[0]) + " | " + esc(c[1]) + " | Categoria " + esc(c[4]) : " | no esta en el paquete de clientes"}</div>`
     : c ? `<div class="muted">Cliente: <strong style="color:var(--ink)">${esc(c[3])}</strong> (${esc(c[2])}) | ${esc(c[0])} | ${esc(c[1])} | Categoria ${esc(c[4])}</div>`
     : '<div class="msg bad" style="margin:0">Elige el cliente en la pestana Clientes.</div>';
@@ -988,64 +1017,72 @@ function renderProyTabla() {
   const t = $("#yTabla");
   if (!PROY.lines.length) { t.innerHTML = '<tbody><tr><td class="l muted">Sin lineas. Usa Agregar articulo.</td></tr></tbody>'; return; }
   if (!DATA) { t.innerHTML = '<tbody><tr><td class="l muted">Sin datos cargados.</td></tr></tbody>'; return; }
-  const nz = PROY.doc ? 1 : 0;
-  let h = `<thead><tr><th class="l">#</th><th class="l">Articulo</th><th class="cost">Costo</th><th>P. lista</th><th>Desc max</th>
-    <th class="cost">Util %</th><th>Precio ESPECIAL min</th><th>Cant</th><th>Total</th>${nz ? "<th>En Zoho</th>" : ""}<th></th></tr></thead><tbody>`;
+  let h = `<thead><tr><th class="l">#</th><th class="l">Articulo</th><th class="cost">Costo</th><th>P. lista</th><th>Desc %</th>
+    <th class="cost">Util %</th><th>Precio venta</th><th>Cant</th><th>Total</th><th></th></tr></thead><tbody>`;
   PROY.lines.forEach((L, i) => {
-    if (!getItem(L.sku)) { h += `<tr data-i="${i}"><td class="l muted">${i + 1}</td><td class="l" colspan="${8 + nz}"><strong>${esc(L.sku || "(sin SKU)")}</strong>${L.nombre ? " " + esc(L.nombre) : ""} <span class="over">${L.sku ? "no existe en los datos actuales" : "no tiene SKU en Zoho"}</span>${L.z ? " | Zoho: " + esc(money(L.z.total)) : ""}</td><td><button class="btn bad" type="button" data-act="del">Quitar</button></td></tr>`; return; }
+    if (!getItem(L.sku)) { h += `<tr data-i="${i}"><td class="l muted">${i + 1}</td><td class="l" colspan="8"><strong>${esc(L.sku || "(sin SKU)")}</strong>${L.nombre ? " " + esc(L.nombre) : ""} <span class="over">${L.sku ? "no existe en los datos actuales" : "no tiene SKU en Zoho"}</span></td><td><button class="btn bad" type="button" data-act="del">Quitar</button></td></tr>`; return; }
     const it = getItem(L.sku);
     h += `<tr data-i="${i}"><td class="l muted">${i + 1}</td>
       <td class="name l"><strong>${esc(it[0])}</strong><small>${esc(it[1])}</small><small class="flag"></small></td>
-      <td class="cost c-costo"></td><td class="c-pl"></td><td class="c-dmax"></td>
-      <td><input type="text" inputmode="decimal" data-f="util" class="cost" placeholder="${esc(pctIn(PROY.util))}" value="${L.util != null && isFinite(L.util) ? esc(pctIn(L.util)) : ""}"></td>
-      <td class="c-precio" style="font-weight:700"></td>
-      <td><input type="text" inputmode="decimal" data-f="cant" value="${esc(L.cant)}"></td>
-      <td class="c-total"></td>${nz ? '<td class="c-zoho"></td>' : ""}
+      <td class="cost c-costo"></td><td class="c-pl"></td>
+      <td><input type="text" inputmode="decimal" data-f="desc" aria-label="Descuento %"></td>
+      <td><input type="text" inputmode="decimal" data-f="util" class="cost" aria-label="Utilidad %"></td>
+      <td class="c-precio"><input type="text" inputmode="decimal" data-f="precio" aria-label="Precio de venta unitario"></td>
+      <td><input type="text" inputmode="decimal" data-f="cant" value="${esc(L.cant)}" aria-label="Cantidad"></td>
+      <td class="c-total"></td>
       <td><button class="btn bad" type="button" data-act="del">Quitar</button></td></tr>`;
   });
   t.innerHTML = h + "</tbody>";
   PROY.lines.forEach((L, i) => recalcFilaProy(i));
 }
+// Tres formas de fijar el precio de una linea (descuento, utilidad o precio directo): la que se toca manda y las otras dos se recalculan.
 function recalcFilaProy(i) {
   const L = PROY.lines[i], tr = $(`#yTabla tr[data-i="${i}"]`); if (!L || !tr) return;
   const x = lineaProy(L); if (!x.it || !$(".c-costo", tr)) return;
-  $(".c-costo", tr).textContent = money(x.it[2]); $(".c-pl", tr).textContent = money(x.pl); $(".c-dmax", tr).textContent = pct(x.it[3]);
-  $(".c-precio", tr).textContent = x.precio != null ? money(x.precio) : "-"; $(".c-total", tr).textContent = x.total != null ? money(x.total) : "-";
-  const f = [], z = L.z, zc = $(".c-zoho", tr);
-  if (zc) zc.innerHTML = z ? esc(money(z.total)) + '<small class="muted" style="display:block">unit. ' + esc(money(rd(z.precio * (1 - z.desc / 100)))) + (z.desc ? " (desc " + esc(rd(z.desc)) + "%)" : "") + '</small>' : "";
-  if (z && x.total != null) { const dif = rd(x.total - z.total); f.push('<span class="muted">Autorizado vs Zoho: ' + (dif === 0 ? "igual" : (dif > 0 ? "+" : "-") + money(Math.abs(dif))) + '</span>'); }
-  if (z && z.canc > 0) f.push('<span style="color:var(--warn)">Zoho: ' + esc(z.canc) + ' cancelada(s) de ' + esc(L.z.ord) + ' ordenadas</span>');
-  if (!x.costoOk) f.push('<span class="over">Sin costo</span>'); else if (!x.utilOk) f.push('<span class="over">Utilidad fuera de rango</span>');
+  $(".c-costo", tr).textContent = money(x.it[2]); $(".c-pl", tr).textContent = money(x.pl);
+  $(".c-total", tr).textContent = x.total != null ? money(x.total) : "-";
+  const set = (f, v, ph) => { const inp = $(`input[data-f="${f}"]`, tr); if (!inp) return; inp.classList.toggle("drv", !!L.modo && L.modo === f); inp.placeholder = ph || "";
+    if (document.activeElement !== inp) inp.value = v; };
+  set("desc", pctIn(x.descReal), PROY.base === "desc" ? pctIn(x.it[3]) : "");
+  set("util", pctIn(x.utilReal), PROY.base === "util" ? pctIn(PROY.util) : "");
+  set("precio", x.precio != null ? num2(x.precio) : "", "");
+  const f = [];
   if (!(x.cant > 0)) f.push('<span class="over">Falta cantidad</span>');
   if (!x.it[7]) f.push('<span style="color:var(--warn)">Inactivo en Zoho</span>');
-  if (x.precio != null) {
-    f.push('<span class="muted">Desc. vs lista ' + (x.descReal == null ? "-" : pct(x.descReal)) + ' | Utilidad real ' + pct(x.utilReal) + '</span>');
-    if (x.pMax != null) f.push(x.precio < x.pMax - 0.005 ? '<span class="muted">Bajo el descuento maximo: requiere autorizacion</span>' : '<span class="muted">Dentro del descuento maximo</span>');
-  }
+  if (x.precio == null && x.motivo) f.push('<span class="over">' + esc(x.motivo) + '</span>');
+  if (x.costoOk && x.precio != null && x.precio < x.it[2] - 0.005) f.push('<span class="over">Precio bajo el costo</span>');
+  if (x.excede) f.push('<span style="color:var(--warn)">Descuento mayor al maximo de lista (' + esc(pct(x.it[3])) + ')</span>');
+  if (L.z && L.z.canc > 0) f.push('<span style="color:var(--warn)">Zoho: ' + esc(L.z.canc) + ' cancelada(s) de ' + esc(L.z.ord) + ' ordenadas</span>');
   $(".flag", tr).innerHTML = f.join(" | ");
 }
 function renderProyecto() {
   if (!PROY.validez) { PROY.validez = isoDate(finMes(new Date())); saveProy(); }
   if (!PROY.autoriza && CFG.gerentes.length === 1) { PROY.autoriza = CFG.gerentes[0]; saveProy(); }
-  $("#yOv").value = PROY.ov || ""; $("#yValidez").value = PROY.validez || ""; $("#yUtil").value = pctIn(PROY.util); $("#yConsec").value = PROY.consec || "";
+  $("#yOv").value = PROY.ov || ""; $("#yValidez").value = PROY.validez || ""; $("#yUtil").value = pctIn(PROY.util); $("#yBase").value = PROY.base; $("#yUtilBox").style.display = PROY.base === "util" ? "" : "none"; $("#yConsec").value = PROY.consec || "";
   renderGerentes(); renderProyTabla(); pintarProy();
 }
 $("#yOv").addEventListener("input", e => { PROY.ov = e.target.value; saveProy(); pintarProy(); });
 $("#yValidez").addEventListener("input", e => { PROY.validez = e.target.value; saveProy(); pintarProy(); });
 $("#yUtil").addEventListener("input", e => {
   const v = parseNum(e.target.value); PROY.util = isFinite(v) ? v / 100 : null; saveProy();
-  $$('#yTabla input[data-f="util"]').forEach(inp => { inp.placeholder = pctIn(PROY.util); });
+  PROY.lines.forEach((L, i) => recalcFilaProy(i)); pintarProy();
+});
+$("#yBase").addEventListener("change", e => {
+  PROY.base = e.target.value; $("#yUtilBox").style.display = PROY.base === "util" ? "" : "none"; saveProy();
   PROY.lines.forEach((L, i) => recalcFilaProy(i)); pintarProy();
 });
 $("#yNuevoConsec").onclick = () => { PROY.consec = consecStr(); saveProy(); $("#yConsec").value = PROY.consec; };
 $("#yAgregar").onclick = () => {
   if (PROY.lines.length >= MAX_PROY) return toast("El proyecto ya tiene " + MAX_PROY + " lineas");
-  pickSku(it => { if (!it) return; PROY.lines.push({ sku: it[0], cant: 1, util: null }); saveProy(); renderProyTabla(); pintarProy(); });
+  pickSku(it => { if (!it) return; PROY.lines.push({ sku: it[0], cant: 1, modo: null, val: null }); saveProy(); renderProyTabla(); pintarProy(); });
 };
 $("#yTabla").addEventListener("input", e => {
   const inp = e.target.closest("input[data-f]"); if (!inp) return;
   const i = +inp.closest("tr").dataset.i, L = PROY.lines[i], v = parseNum(inp.value);
-  if (inp.dataset.f === "cant") L.cant = isFinite(v) ? v : 0; else L.util = isFinite(v) ? v / 100 : null;
+  const f = inp.dataset.f;
+  if (f === "cant") L.cant = isFinite(v) ? v : 0;
+  else if (!inp.value.trim() || !isFinite(v)) { L.modo = null; L.val = null; }   // vacio: vuelve a la base del proyecto
+  else { L.modo = f; L.val = f === "precio" ? v : v / 100; }
   saveProy(); recalcFilaProy(i); pintarProy();
 });
 $("#yTabla").addEventListener("click", e => {
@@ -1159,6 +1196,112 @@ $("#yCompartir").onclick = async () => {
   registrar(); toast(files.length > 1 ? files.length + " imagenes descargadas" : "Imagen descargada");
 };
 
+
+/* ====================== EXPORTAR A EXCEL (.xlsx escrito sin librerias) ====================== */
+// Dos archivos, como el par version cliente / version interna: el interno lleva costos y margenes y NO debe salir de gerencia.
+const crcT = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc32 = u => { let c = 0xFFFFFFFF; for (let i = 0; i < u.length; i++) c = crcT[(c ^ u[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+function zipAlmacenar(files) {
+  const enc = new TextEncoder(), parts = [], cen = []; let off = 0, d = new Date();
+  const dt = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1), dd = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  files.forEach(([name, txt]) => {
+    const nb = enc.encode(name), data = enc.encode(txt), crc = crc32(data), lh = new DataView(new ArrayBuffer(30)), ch = new DataView(new ArrayBuffer(46));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(10, dt, true); lh.setUint16(12, dd, true);
+    lh.setUint32(14, crc, true); lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true); lh.setUint16(26, nb.length, true);
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint16(12, dt, true); ch.setUint16(14, dd, true);
+    ch.setUint32(16, crc, true); ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true); ch.setUint16(28, nb.length, true); ch.setUint32(42, off, true);
+    parts.push(new Uint8Array(lh.buffer), nb, data); cen.push(new Uint8Array(ch.buffer), nb); off += 30 + nb.length + data.length;
+  });
+  const cl = cen.reduce((a, b) => a + b.length, 0), end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true); end.setUint32(12, cl, true); end.setUint32(16, off, true);
+  return new Blob([...parts, ...cen, new Uint8Array(end.buffer)], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+}
+const xlCol = n => { let s = ""; n++; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
+const xe = t => String(t).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+// estilos: 1 negrita, 2 encabezado, 3 monto, 4 porcentaje, 5 monto total, 6 porcentaje total, 7 titulo rojo, 8 etiqueta total
+const T = (v, s) => ({ v, s }), N = (v, s) => ({ v, s }), Fm = (f, v, s) => ({ f, v, s });
+function hojaXml(rows, widths) {
+  let x = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols>' +
+    widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join("") + "</cols><sheetData>";
+  rows.forEach((r, ri) => {
+    x += `<row r="${ri + 1}">`;
+    r.forEach((c, ci) => {
+      if (c == null) return; const ref = xlCol(ci) + (ri + 1), st = c.s ? ` s="${c.s}"` : "";
+      if (c.f) x += `<c r="${ref}"${st}><f>${xe(c.f)}</f>${c.v == null || c.v === "" ? "" : `<v>${c.v}</v>`}</c>`;
+      else if (typeof c.v === "number") x += `<c r="${ref}"${st}><v>${c.v}</v></c>`;
+      else x += `<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${xe(c.v)}</t></is></c>`;
+    });
+    x += "</row>";
+  });
+  return x + "</sheetData></worksheet>";
+}
+const ESTILOS = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+  '<numFmts count="2"><numFmt numFmtId="164" formatCode="#,##0.00"/><numFmt numFmtId="165" formatCode="0.00%"/></numFmts>' +
+  '<fonts count="4"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="13"/><color rgb="FFC00000"/><name val="Calibri"/></font></fonts>' +
+  '<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF156082"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFD6ECF8"/></patternFill></fill></fills>' +
+  '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+  '<cellXfs count="9"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +
+  '<xf numFmtId="0" fontId="2" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' +
+  '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +
+  '<xf numFmtId="164" fontId="1" fillId="3" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1"/><xf numFmtId="165" fontId="1" fillId="3" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1"/>' +
+  '<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="1" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs></styleSheet>';
+function libroXlsx(nombreHoja, rows, widths) {
+  return zipAlmacenar([
+    ["[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'],
+    ["_rels/.rels", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>'],
+    ["xl/workbook.xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="' + xe(nombreHoja) + '" sheetId="1" r:id="rId1"/></sheets><calcPr fullCalcOnLoad="1"/></workbook>'],
+    ["xl/_rels/workbook.xml.rels", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'],
+    ["xl/styles.xml", ESTILOS], ["xl/worksheets/sheet1.xml", hojaXml(rows, widths)]]);
+}
+function excelCliente() {
+  const d = proyDatos(), rows = [[T("AUTORIZACION DE PROYECTO", 7)], [T("Importaciones Industriales MASACA", 1)], []];
+  d.filas.forEach(f => rows.push([T(f[0], 1), T(f[1])]));
+  rows.push([]); rows.push(["SKU", "Descripcion", "Precio ESPECIAL Minimo", "Cant", "Total Colones sin IVA"].map(h => T(h, 2)));
+  const r0 = rows.length + 1;
+  d.lineas.forEach(l => { const r = rows.length + 1; rows.push([T(l.cod), T(l.desc), N(l.precio, 3), N(l.cant), Fm(`ROUND(C${r}*D${r},2)`, l.total, 3)]); });
+  const r1 = rows.length;
+  rows.push([null, null, null, T("Total del negocio", 8), Fm(`SUM(E${r0}:E${r1})`, d.total, 5)]);
+  return libroXlsx("Autorizacion", rows, [16, 60, 22, 10, 24]);
+}
+function excelInterno() {
+  const d = proyDatos(), t = totalesProy(), rows = [[T("INTERNO: contiene costos, utilidades y margenes. No enviar al cliente ni al concesionario.", 7)], [T("Proyecto " + (PROY.ov.trim() || "sin OV") + " | " + clienteProy()[3] + " | Autoriza: " + (PROY.autoriza || "sin definir") + " | " + fCorta(new Date()), 1)], []];
+  const H = ["SKU", "Descripcion", "Costo", "P. lista", "Desc max", "Desc aplicado", "Precio venta", "Util %", "Cant", "Total", "Costo total", "Utilidad", "Metodo", "Alerta"];
+  rows.push(H.map(h => T(h, 2)));
+  const r0 = rows.length + 1, base = PROY.base === "util" ? "Utilidad por defecto" : "Descuento maximo", met = { desc: "Descuento", util: "Utilidad", precio: "Precio directo" };
+  PROY.lines.forEach(L => {
+    const x = lineaProy(L); if (!x.it) return; const r = rows.length + 1, a = [];
+    if (x.costoOk && x.precio != null && x.precio < x.it[2] - 0.005) a.push("Bajo el costo");
+    if (x.excede) a.push("Excede desc max");
+    const ok = x.precio != null;
+    rows.push([T(x.it[0]), T(x.it[1]), x.costoOk ? N(x.it[2], 3) : null, x.pl != null ? N(x.pl, 3) : null, N(x.it[3], 4),
+      ok && x.pl != null ? Fm(`(D${r}-G${r})/D${r}`, x.descReal, 4) : null, ok ? N(x.precio, 3) : null,
+      ok && x.costoOk ? Fm(`(G${r}-C${r})/G${r}`, x.utilReal, 4) : null, N(x.cant), ok && x.cant > 0 ? Fm(`ROUND(G${r}*I${r},2)`, x.total, 3) : null,
+      x.costoOk && x.cant > 0 ? Fm(`ROUND(C${r}*I${r},2)`, x.costoTot, 3) : null, ok && x.costoOk && x.cant > 0 ? Fm(`J${r}-K${r}`, rd(x.total - x.costoTot), 3) : null,
+      T(L.modo ? met[L.modo] : "Base: " + base), T(a.join(", "))]);
+  });
+  const r1 = rows.length, tr = r1 + 1;
+  rows.push([null, T("Total del negocio", 8), null, null, null, null, null, Fm(`IF(J${tr}>0,L${tr}/J${tr},"")`, t.margen == null ? "" : t.margen, 6), null,
+    Fm(`SUM(J${r0}:J${r1})`, t.neg, 5), Fm(`SUM(K${r0}:K${r1})`, t.costo, 5), Fm(`SUM(L${r0}:L${r1})`, t.util, 5)]);
+  return libroXlsx("Interno", rows, [16, 56, 14, 14, 10, 13, 14, 10, 8, 16, 16, 16, 22, 28]);
+}
+async function entregarExcel(blob, nombre) {
+  const file = new File([blob], nombre, { type: blob.type });
+  try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: nombre }); return; } }
+  catch (e) { if (e && e.name === "AbortError") return; }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nombre; a.click(); toast("Excel descargado");
+}
+const nomArch = suf => "proyecto_" + (PROY.ov.trim().replace(/[^A-Za-z0-9-]/g, "") || "sin-OV") + "_" + suf + ".xlsx";
+$("#yExcelInt").onclick = () => {
+  if (!DATA || !PROY.lines.length) return toast("Agrega lineas al proyecto");
+  entregarExcel(excelInterno(), nomArch("interno"));
+};
+// La version cliente sale con los mismos requisitos que la imagen (gerente, validez, lineas completas) y registra el consecutivo.
+$("#yExcelCli").onclick = () => {
+  const pr = problemasProy(); if (pr.length) return toast(pr[0]);
+  asegurarConsecProy(); const hash = hashProy(), consec = PROY.consec;
+  PROY.shared = { consec, hash }; saveProy();
+  entregarExcel(excelCliente(), nomArch("cliente_" + consec));
+};
 
 /* ====================== OV Y COTIZACIONES DE ZOHO ====================== */
 // Se lee la exportacion .xlsx de Zoho directamente en la tableta (sin librerias): un .xlsx es un zip con XML.
@@ -1300,7 +1443,7 @@ function cargarDoc(t, k) {
   if (PROY.lines.length && !confirm("Cargar " + D.raw + "? Se reemplazan las lineas actuales del proyecto.")) return;
   const c = buscarClienteDoc(D), tipo = t;
   PROY.doc = { t: tipo, num: k, raw: D.raw, cn: D.cn, cl: D.cl, cli: c.cod, porNombre: c.porNombre, est: D.est, f: D.f, zsub: D.sub, vend: D.vend, nl: D.L.length };
-  PROY.lines = D.L.map(l => ({ sku: l[0], nombre: l[1], cant: l[2] > 0 ? l[2] : 0, util: null, z: { ord: l[2], canc: l[3], precio: l[4], desc: l[5], total: l[6] } }));
+  PROY.lines = D.L.map(l => ({ sku: l[0], nombre: l[1], cant: l[2] > 0 ? l[2] : 0, modo: null, val: null, z: { ord: l[2], canc: l[3], precio: l[4], desc: l[5], total: l[6] } }));
   PROY.ov = D.raw; PROY.consec = ""; PROY.shared = null; saveProy();
   $("#ovDoc").classList.remove("on"); renderProyecto(); toast(D.raw + " cargada");
 }
